@@ -1,0 +1,1892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MultiSense Tracker Console</title>
+
+<!-- Leaflet (map) -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!-- Chart.js (history chart) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --bg:        #0A0E1C;
+  --bg-glow-1: rgba(97,114,255,.22);
+  --bg-glow-2: rgba(45,212,191,.16);
+  --panel:     rgba(20,26,46,.60);
+  --panel-2:   rgba(35,44,78,.55);
+  --line:      rgba(96,112,178,.32);
+  --ink:       #EDF1FF;
+  --muted:     #93A0C9;
+  --faint:     #5F6B95;
+  --accent:    #7C9AFF;
+  --cyan:      #2DD4BF;
+  --amber:     #F7A45B;
+  --green:     #3DDC97;
+  --red:       #FF6B7A;
+  --violet:    #A78BFA;
+  --chart-grid:rgba(64,78,130,.35);
+  --log-bg:    #0D1226;
+  --shadow:       0 2px 6px rgba(2,6,23,.5), 0 16px 34px -10px rgba(2,6,23,.55),
+                  0 42px 80px -34px rgba(88,112,255,.28);
+  --shadow-hover: 0 6px 14px rgba(2,6,23,.5), 0 28px 52px -12px rgba(2,6,23,.62),
+                  0 64px 120px -38px rgba(88,112,255,.40);
+  --swatch-border: rgba(255,255,255,.18);
+  --glass-edge: rgba(255,255,255,.07);
+  --map-dev:   #2F5BEA;   /* device colour on map (same in both themes) */
+  --map-user:  #E8821E;   /* user colour on map */
+  --map-trail: #E5199A;   /* breadcrumb trail — high-vis on satellite imagery */
+  --radius:    16px;
+  --mono:      'IBM Plex Mono', ui-monospace, monospace;
+  --sans:      'IBM Plex Sans', system-ui, sans-serif;
+  --display:   'Space Grotesk', var(--sans);
+}
+html[data-theme="light"]{
+  --bg:        #EDF0F9;
+  --bg-glow-1: rgba(99,122,255,.28);
+  --bg-glow-2: rgba(13,148,136,.20);
+  --panel:     rgba(255,255,255,.58);
+  --panel-2:   rgba(255,255,255,.55);
+  --line:      rgba(140,155,205,.35);
+  --ink:       #141B36;
+  --muted:     #525E82;
+  --faint:     #8B96B8;
+  --accent:    #4463E8;
+  --cyan:      #0C9488;
+  --amber:     #C0700F;
+  --green:     #0E9F6E;
+  --red:       #DC3D55;
+  --violet:    #7C5CE0;
+  --chart-grid:rgba(90,105,160,.22);
+  --log-bg:    #F7F9FF;
+  --shadow:       0 1px 3px rgba(23,32,73,.10), 0 12px 26px -8px rgba(23,32,73,.14),
+                  0 36px 70px -30px rgba(68,99,232,.22);
+  --shadow-hover: 0 4px 10px rgba(23,32,73,.12), 0 22px 44px -10px rgba(23,32,73,.20),
+                  0 56px 100px -34px rgba(68,99,232,.32);
+  --swatch-border: rgba(20,27,54,.15);
+  --glass-edge: rgba(255,255,255,.65);
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+[hidden]{display:none !important;}
+html{height:100%;}
+body{min-height:100%;}   /* min- (not fixed) height: body must grow with content or sticky header stops at 100vh */
+body{
+  background:var(--bg);
+  background-image:
+    radial-gradient(900px 520px at 8% -12%, var(--bg-glow-1), transparent 60%),
+    radial-gradient(820px 520px at 102% 112%, var(--bg-glow-2), transparent 60%);
+  background-attachment:fixed;
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:14px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  transition:background .3s, color .3s;
+}
+
+/* ---------- Top status bar ---------- */
+header{
+  display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+  padding:14px 22px;
+  border-bottom:1px solid var(--line);
+  background:var(--bg);
+  background:color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter:blur(20px) saturate(170%);
+  -webkit-backdrop-filter:blur(20px) saturate(170%);
+  position:sticky; top:0; z-index:1000;
+}
+.brand{display:flex; align-items:center; gap:12px;}
+.brand-mark{
+  width:38px; height:38px; border-radius:11px;
+  background:var(--panel-2); border:1px solid var(--line);
+  display:grid; place-items:center;
+}
+.brand h1{
+  font-family:var(--display);
+  font-size:17px; font-weight:700; letter-spacing:.02em;
+  background:linear-gradient(90deg, var(--accent), var(--cyan));
+  -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent; color:transparent;
+}
+.brand .sub{
+  font-family:var(--mono); font-size:11px; color:var(--muted); letter-spacing:.08em;
+}
+.icon-btn{
+  width:34px; height:34px; border-radius:10px; flex:none;
+  display:grid; place-items:center; cursor:pointer;
+  background:var(--panel-2); border:1px solid var(--line); color:var(--muted);
+  transition:color .2s, border-color .2s;
+}
+.icon-btn:hover{color:var(--accent); border-color:var(--accent);}
+.icon-btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+.badges{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+.badge{
+  display:inline-flex; align-items:center; gap:7px;
+  font-family:var(--mono); font-size:11.5px; font-weight:500; letter-spacing:.05em;
+  padding:6px 12px; border-radius:999px;
+  border:1px solid var(--line); background:var(--panel);
+  color:var(--muted);
+}
+.dot{width:8px; height:8px; border-radius:50%; background:var(--faint); flex:none;}
+.badge.ok    .dot{background:var(--green); box-shadow:0 0 8px rgba(63,214,143,.6);}
+.badge.ok         {color:var(--green); border-color:rgba(63,214,143,.35);}
+.badge.warn  .dot{background:var(--amber); box-shadow:0 0 8px rgba(255,180,84,.6);}
+.badge.warn       {color:var(--amber); border-color:rgba(255,180,84,.35);}
+.badge.err   .dot{background:var(--red);  box-shadow:0 0 8px rgba(255,107,107,.6);}
+.badge.err        {color:var(--red);  border-color:rgba(255,107,107,.35);}
+.badge.env-out    {color:var(--cyan); border-color:rgba(67,198,232,.4);}
+.badge.env-out .dot{background:var(--cyan); box-shadow:0 0 8px rgba(67,198,232,.6);}
+@media (prefers-reduced-motion:no-preference){
+  .badge.ok .dot, .badge.env-out .dot{animation:pulse 2.2s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+}
+.header-right{margin-left:auto; display:flex; align-items:center; gap:16px; flex-wrap:wrap;}
+.meta{font-family:var(--mono); font-size:11.5px; color:var(--muted);}
+.meta b{color:var(--ink); font-weight:500;}
+.cardfoot{display:flex; gap:22px; flex-wrap:wrap; margin-top:14px; padding-top:12px;
+  border-top:1px solid var(--line);
+  font-family:var(--mono); font-size:11.5px; color:var(--muted);}
+.cardfoot b{color:var(--ink); font-weight:500;}
+.switch{display:inline-flex; align-items:center; gap:8px; cursor:pointer; user-select:none;
+  font-family:var(--mono); font-size:11.5px; color:var(--muted); letter-spacing:.04em;}
+.switch input{display:none;}
+.track{width:34px; height:18px; border-radius:999px; background:var(--panel-2);
+  border:1px solid var(--line); position:relative; transition:background .2s;}
+.track::after{content:""; position:absolute; top:2px; left:2px; width:12px; height:12px;
+  border-radius:50%; background:var(--muted); transition:transform .2s, background .2s;}
+.switch input:checked + .track{background:rgba(67,198,232,.25); border-color:rgba(67,198,232,.5);}
+.switch input:checked + .track::after{transform:translateX(16px); background:var(--cyan);}
+
+/* ---------- Header battery pill ---------- */
+.batt-pill{display:inline-flex; align-items:center; gap:10px; padding:8px 15px; cursor:default;
+  border:1px solid var(--line); border-radius:999px; background:var(--panel);
+  backdrop-filter:blur(16px) saturate(160%); -webkit-backdrop-filter:blur(16px) saturate(160%);
+  font-family:var(--mono); font-size:12.5px;}
+.batt-pill .icon{position:relative; width:32px; height:16px; border:1.5px solid var(--muted);
+  border-radius:4px; flex:none;}
+.batt-pill .icon::after{content:""; position:absolute; right:-6px; top:3.5px; width:3.5px; height:7px;
+  background:var(--muted); border-radius:0 2px 2px 0;}
+.batt-pill .icon i{position:absolute; top:2px; left:2px; bottom:2px; width:0%;
+  background:var(--green); border-radius:2px; transition:width .5s, background .4s;}
+.batt-pill .bolt{position:absolute; inset:0; display:none; place-items:center; color:#fff;
+  filter:drop-shadow(0 0 2px rgba(0,0,0,.7));}
+.batt-pill.charging .bolt{display:grid;}
+.batt-pill.charging .icon i{background:var(--green);}
+.batt-pill .pct{font-weight:600; font-size:13.5px; color:var(--ink);}
+.batt-pill .eta{color:var(--muted);}
+.batt-pill.low{border-color:rgba(255,107,107,.55);}
+.batt-pill.low .pct{color:var(--red);}
+@media (prefers-reduced-motion:no-preference){
+  .batt-pill.low{animation:lowblink 1.4s ease-in-out infinite;}
+  @keyframes lowblink{0%,100%{box-shadow:0 0 0 0 rgba(255,107,107,0);}50%{box-shadow:0 0 12px 1px rgba(255,107,107,.45);}}
+}
+
+/* ---------- Alert center ---------- */
+.icon-btn{position:relative;}
+.alert-badge{position:absolute; top:-5px; right:-5px; min-width:16px; height:16px; padding:0 4px;
+  border-radius:8px; background:var(--red); color:#fff; font-family:var(--mono); font-size:9.5px;
+  display:grid; place-items:center; border:2px solid var(--bg);}
+.alert-panel{position:fixed; top:64px; right:18px; width:340px; max-width:calc(100vw - 24px);
+  max-height:60vh; display:flex; flex-direction:column; z-index:2500;
+  background:var(--panel); border:1px solid var(--line); border-radius:14px;
+  box-shadow:var(--shadow-hover);
+  backdrop-filter:blur(24px) saturate(160%); -webkit-backdrop-filter:blur(24px) saturate(160%);}
+.ap-head{display:flex; align-items:center; justify-content:space-between; padding:12px 14px;
+  border-bottom:1px solid var(--line); font-family:var(--display); font-weight:600; font-size:13px;}
+.ap-head button{background:none; border:1px solid var(--line); border-radius:8px; color:var(--muted);
+  font-family:var(--mono); font-size:10.5px; padding:4px 10px; cursor:pointer;}
+.ap-head button:hover{color:var(--red); border-color:var(--red);}
+.ap-list{overflow-y:auto; padding:8px;}
+.ap-item{display:flex; gap:10px; padding:9px 8px; border-radius:10px; font-size:12px;}
+.ap-item:hover{background:var(--panel-2);}
+.ap-item .ap-msg{color:var(--muted); font-size:11px;}
+.ap-item .ap-time{font-family:var(--mono); font-size:10px; color:var(--faint); flex:none; padding-top:2px;}
+.ap-item.err b{color:var(--red);} .ap-item.warn b{color:var(--amber);}
+.ap-empty{padding:20px; text-align:center; color:var(--faint); font-family:var(--mono); font-size:11px;}
+
+/* ---------- mini buttons / playback / device control ---------- */
+.mini-btn{font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; cursor:pointer;
+  background:var(--panel-2); color:var(--muted); border:1px solid var(--line); border-radius:8px; padding:5px 10px;}
+.mini-btn:hover{color:var(--accent); border-color:var(--accent);}
+.mini-btn.on{color:var(--accent); border-color:var(--accent); background:rgba(124,154,255,.14);}
+.pb-bar{display:flex; align-items:center; gap:12px; margin-bottom:12px;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:8px 12px;}
+.pb-bar input[type=range]{flex:1; accent-color:var(--accent); min-width:0;}
+.pb-bar button{width:30px; height:30px; border-radius:8px; background:var(--panel);
+  border:1px solid var(--line); color:var(--ink); cursor:pointer; flex:none;}
+.pb-bar button:hover{border-color:var(--accent); color:var(--accent);}
+.pb-info{font-family:var(--mono); font-size:10.5px; color:var(--muted); white-space:nowrap;}
+.ctrl-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px;}
+.ctrl-box{background:var(--panel-2); border:1px solid var(--line); border-radius:12px; padding:14px;
+  display:flex; flex-direction:column; gap:10px;}
+.ctrl-box .lbl{font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--faint); text-transform:uppercase;}
+.ctrl-box select{background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:8px;
+  padding:7px 10px; font-family:var(--mono); font-size:12px;}
+.ctrl-btn{font-family:var(--mono); font-size:11.5px; letter-spacing:.04em; cursor:pointer;
+  background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:9px; padding:9px 12px;}
+.ctrl-btn:hover{color:var(--accent); border-color:var(--accent);}
+#gfRadius{width:110px; accent-color:var(--violet);}
+@media (max-width:820px){
+  .ctrl-grid{grid-template-columns:1fr;}
+  .daily-kv{grid-template-columns:repeat(2,minmax(0,1fr)) !important;}
+}
+
+/* ---------- Toast notifications ---------- */
+#toasts{position:fixed; bottom:20px; right:22px; z-index:2000;
+  display:flex; flex-direction:column-reverse; gap:10px; max-width:340px;}
+.toast{display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border-radius:12px;
+  background:var(--panel); backdrop-filter:blur(20px) saturate(160%);
+  -webkit-backdrop-filter:blur(20px) saturate(160%); border:1px solid rgba(255,107,107,.55);
+  box-shadow:var(--shadow); font-size:13px;}
+.toast b{font-family:var(--display); font-size:13px;}
+.toast .msg{color:var(--muted); margin-top:2px; font-size:12px;}
+.toast .x{margin-left:auto; background:none; border:none; color:var(--muted);
+  cursor:pointer; font-size:14px; line-height:1; padding:0 0 0 6px;}
+.toast .x:hover{color:var(--ink);}
+.toast.warn{border-color:rgba(255,180,84,.55);}
+
+/* ---------- User location marker ---------- */
+.user-dot .core{width:13px; height:13px; border-radius:50%; background:var(--map-user);
+  border:2.5px solid #fff; box-shadow:0 0 10px rgba(232,130,30,.9);}
+
+/* ---------- Dark Leaflet layers control ---------- */
+.leaflet-control-layers{background:var(--panel) !important; color:var(--ink);
+  border:1px solid var(--line) !important; border-radius:10px !important;
+  font-family:var(--mono); font-size:11px; box-shadow:0 4px 18px rgba(0,0,0,.4) !important;}
+.leaflet-control-layers-toggle{filter:invert(.85) hue-rotate(180deg);}
+html[data-theme="light"] .leaflet-control-layers-toggle{filter:none;}
+.leaflet-control-layers label{margin:3px 0;}
+
+/* ---------- Layout: one stacked column on every screen ---------- */
+.layout{max-width:1180px; margin:0 auto; padding:20px 22px 40px;
+  display:grid; gap:18px; grid-template-columns:minmax(0,1fr); align-items:start;}
+main{display:grid; gap:18px; min-width:0;}
+.row-top,.row-sensors,.row-bottom{display:grid; grid-template-columns:1fr; gap:18px;}
+
+/* ---------- Quick-readout strip (wrapping row, same format everywhere) ---------- */
+.quick-panel{display:flex; flex-wrap:wrap; gap:16px;}
+.quick-panel .qp-box{flex:1 1 240px; min-width:0;}
+.qp-box{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+  padding:18px; box-shadow:var(--shadow), inset 0 1px 0 var(--glass-edge); backdrop-filter:blur(24px) saturate(160%); -webkit-backdrop-filter:blur(24px) saturate(160%);}
+.qp-lbl{font-family:var(--mono); font-size:10px; letter-spacing:.12em; color:var(--faint);
+  text-transform:uppercase; margin-bottom:12px;}
+.qp-dist{font-family:var(--mono); font-size:44px; font-weight:600; color:var(--cyan);
+  line-height:1.05; letter-spacing:-.02em;}
+.qp-dist small{font-size:18px; color:var(--muted); font-weight:400;}
+.qp-sub{font-family:var(--mono); font-size:11.5px; color:var(--muted); margin-top:6px;}
+.env-read{display:flex; align-items:center; gap:14px;}
+.env-icon{width:54px; height:54px; border-radius:14px; flex:none;
+  display:grid; place-items:center; color:var(--muted);
+  background:var(--panel-2); border:1px solid var(--line);
+  transition:color .3s, background .3s, border-color .3s;}
+.env-name{font-family:var(--display); font-size:23px; font-weight:700; letter-spacing:.02em; line-height:1.15;}
+.env-sub{font-family:var(--mono); font-size:10.5px; color:var(--muted); margin-top:4px;}
+.qp-env.out .env-icon{color:var(--cyan); background:rgba(45,212,191,.13); border-color:rgba(45,212,191,.45);}
+.qp-env.out .env-name{color:var(--cyan);}
+.qp-env.in  .env-icon{color:var(--amber); background:rgba(247,164,91,.13); border-color:rgba(247,164,91,.45);}
+.qp-env.in  .env-name{color:var(--amber);}
+@media (prefers-reduced-motion:no-preference){
+  .qp-env.out .env-icon, .qp-env.in .env-icon{animation:envglow 2.6s ease-in-out infinite;}
+  @keyframes envglow{0%,100%{box-shadow:0 0 0 0 transparent;}50%{box-shadow:0 0 14px -2px currentColor;}}
+}
+/* quick-readout strip stays a wrapping row on every screen size */
+
+/* ---------- portrait phone optimisation ---------- */
+@media (max-width:640px){
+  header{padding:10px 14px; gap:10px;}
+  .brand h1{font-size:15px;}
+  .brand-mark{width:32px; height:32px;}
+  .header-right{margin-left:0; width:100%; justify-content:space-between; gap:10px;}
+  .batt-pill{padding:6px 11px; font-size:11.5px;}
+  .layout{padding:14px 12px 30px; gap:14px;}
+  main, .row-top, .row-sensors, .row-bottom{gap:14px;}
+  .card-head{padding:12px 14px 8px;}
+  .card-body{padding:4px 14px 14px;}
+  #map{height:52vh; min-height:300px;}
+  .map-toolbar{flex-wrap:wrap; row-gap:8px; padding:10px 14px;}
+  .map-toolbar .coords{margin-left:0; width:100%;}
+  .kv{gap:8px 10px;}
+  .kv .val{font-size:14.5px;}
+  .tof-read .big{font-size:36px;}
+  .qp-dist{font-size:36px;}
+  .env-name{font-size:20px;}
+  .col-name{font-size:18px;}
+  .swatch{width:68px; height:68px;}
+  .spectrum{height:118px; gap:5px;}
+  .batt-wrap{flex-wrap:wrap;}
+  .chart-wrap{height:200px;}
+  .log{height:200px;}
+  #toasts{top:auto; bottom:14px; left:12px; right:12px; max-width:none;}
+  footer{padding:0 14px 22px;}
+}
+/* very wide landscape screens: same stacked format, taller map */
+@media (min-width:1600px){
+  #map{height:520px;}
+}
+
+.card{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow), inset 0 1px 0 var(--glass-edge);
+  backdrop-filter:blur(24px) saturate(160%);
+  -webkit-backdrop-filter:blur(24px) saturate(160%);
+  overflow:hidden;
+  display:flex; flex-direction:column;
+}
+.card-head{
+  display:flex; align-items:baseline; gap:10px;
+  padding:14px 18px 10px;
+}
+.card-head h2{
+  font-family:var(--display); font-size:14px; font-weight:600; letter-spacing:.02em;
+}
+.card-head .bus{
+  font-family:var(--mono); font-size:10.5px; color:var(--faint); letter-spacing:.08em;
+}
+.card-head .right{margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--muted);}
+.card-body{padding:6px 18px 18px; flex:1;}
+
+/* ---------- Map ---------- */
+#map{height:440px; width:100%; background:var(--panel-2);}
+.map-card .card-body{padding:0;}
+.map-toolbar{
+  display:flex; gap:10px; align-items:center;
+  padding:10px 18px; border-top:1px solid var(--line);
+  font-family:var(--mono); font-size:11.5px; color:var(--muted);
+}
+.map-toolbar button{
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.04em;
+  background:var(--panel-2); color:var(--ink);
+  border:1px solid var(--line); border-radius:8px;
+  padding:6px 12px; cursor:pointer;
+}
+.map-toolbar button:hover{border-color:var(--cyan); color:var(--cyan);}
+.tbtn-ico{display:inline-flex; align-items:center; gap:7px;}
+.tbtn-ico.on{color:var(--accent) !important; border-color:var(--accent) !important;
+  background:rgba(124,154,255,.15) !important; box-shadow:0 0 10px -3px var(--accent);}
+.map-toolbar button:focus-visible, .switch input:focus-visible + .track{outline:2px solid var(--cyan); outline-offset:2px;}
+.coords{margin-left:auto;}
+.device-dot{position:relative;}
+.device-dot .core{
+  width:14px; height:14px; border-radius:50%;
+  background:var(--map-dev); border:2.5px solid #fff;
+  box-shadow:0 0 10px rgba(47,91,234,.85);
+}
+.device-dot .ring{
+  position:absolute; inset:-9px; border-radius:50%;
+  border:2px solid rgba(47,91,234,.45);
+}
+@media (prefers-reduced-motion:no-preference){
+  .device-dot .ring{animation:ring 2s ease-out infinite;}
+  @keyframes ring{0%{transform:scale(.5); opacity:1;}100%{transform:scale(1.5); opacity:0;}}
+}
+.leaflet-container{font-family:var(--mono);}
+
+/* ---------- KV grids ---------- */
+.kv{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 16px;}
+.kv .cell{background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:10px 12px;}
+.kv .lbl{font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--faint); text-transform:uppercase;}
+.kv .val{font-family:var(--mono); font-size:16px; font-weight:500; margin-top:2px;}
+.kv .val small{font-size:11px; color:var(--muted); font-weight:400;}
+.val.good{color:var(--green);} .val.warn{color:var(--amber);} .val.bad{color:var(--red);} .val.cy{color:var(--cyan);}
+
+/* signal bars */
+.sig{display:inline-flex; align-items:flex-end; gap:2.5px; height:16px; margin-right:8px;}
+.sig i{width:4px; background:var(--line); border-radius:1.5px; display:block;}
+.sig i:nth-child(1){height:25%;} .sig i:nth-child(2){height:45%;}
+.sig i:nth-child(3){height:65%;} .sig i:nth-child(4){height:85%;} .sig i:nth-child(5){height:100%;}
+.sig i.on{background:var(--cyan);}
+
+/* ---------- Spectral card (AS7341) ---------- */
+.spectrum{
+  display:flex; align-items:flex-end; gap:8px;
+  height:150px; padding:8px 4px 0;
+}
+.chan{flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; height:100%;}
+.chan .barwrap{flex:1; width:100%; display:flex; align-items:flex-end; justify-content:center;}
+.chan .bar{
+  width:70%; min-height:3px; border-radius:4px 4px 2px 2px;
+  transition:height .5s cubic-bezier(.4,0,.2,1);
+  box-shadow:0 0 12px -2px currentColor;
+}
+.chan .nm{font-family:var(--mono); font-size:9.5px; color:var(--faint); letter-spacing:.04em;}
+.chan .cnt{font-family:var(--mono); font-size:9.5px; color:var(--muted);}
+.spectrum-strip{
+  height:5px; border-radius:3px; margin:10px 4px 14px;
+  background:linear-gradient(90deg,#7b3ff2 0%,#3f51f2 12%,#2196f3 25%,#00d084 40%,#8bc34a 52%,#ffd93b 65%,#ff9800 80%,#f2453f 100%);
+  opacity:.85;
+}
+.colour-read{display:flex; align-items:center; gap:16px;}
+.swatch{width:84px; height:84px; border-radius:14px; flex:none; background:#3a4356;
+  border:1px solid var(--swatch-border);
+  box-shadow:inset 0 0 0 2px rgba(0,0,0,.25), 0 0 22px -4px currentColor;
+  transition:background .5s, color .5s;}
+.col-name{font-family:var(--display); font-size:21px; font-weight:600; line-height:1.2;}
+.col-meta{font-family:var(--mono); font-size:11px; color:var(--muted); letter-spacing:.04em; margin-top:5px;}
+.spec-foot{display:grid; grid-template-columns:repeat(3,1fr); gap:10px;}
+
+/* ---------- ToF card ---------- */
+.tof-read{display:flex; align-items:baseline; gap:8px; padding:6px 0 2px;}
+.tof-read .big{font-family:var(--mono); font-size:44px; font-weight:600; letter-spacing:-.02em;}
+.tof-read .unit{font-family:var(--mono); font-size:14px; color:var(--muted);}
+.tof-gauge{height:10px; border-radius:6px; background:var(--panel-2); border:1px solid var(--line);
+  overflow:hidden; margin:10px 0 4px;}
+.tof-fill{height:100%; width:0%; border-radius:6px;
+  background:linear-gradient(90deg, var(--green), var(--amber) 70%, var(--red));
+  transition:width .5s cubic-bezier(.4,0,.2,1);}
+.tof-scale{display:flex; justify-content:space-between; font-family:var(--mono);
+  font-size:9.5px; color:var(--faint); margin-bottom:14px;}
+canvas.spark{width:100%; height:64px;}
+.tof-heat{width:100%; aspect-ratio:1.35/1; max-height:230px; display:block;
+  border-radius:12px; margin:8px 0 6px;}
+.heat-legend{display:flex; align-items:center; gap:10px; margin-bottom:14px;
+  font-family:var(--mono); font-size:10px; color:var(--faint); letter-spacing:.06em;}
+.heat-grad{flex:1; height:6px; border-radius:3px;
+  background:linear-gradient(90deg, hsl(0,72%,52%), hsl(112,68%,46%), hsl(225,72%,48%));}
+
+/* ---------- scroll-reveal animations: 3D, replay on every pass ---------- */
+.reveal{opacity:0; will-change:transform, opacity;
+  transform:perspective(1100px) translateY(48px) rotateX(9deg) scale(.975);
+  transition:opacity .6s ease, transform .6s cubic-bezier(.22,.68,.3,1), box-shadow .45s ease;}
+.reveal.from-left {transform:perspective(1100px) translateX(-54px) rotateY(7deg)  scale(.975);}
+.reveal.from-right{transform:perspective(1100px) translateX(54px)  rotateY(-7deg) scale(.975);}
+.reveal.from-up   {transform:perspective(1100px) translateY(-42px) rotateX(-8deg) scale(.975);}
+.reveal.pop       {transform:perspective(1100px) scale(.88) rotateX(7deg);}
+.reveal.visible   {opacity:1; transform:none;}
+/* 3D hover lift — placed after reveal so it wins while a card is visible */
+.card.visible:hover, .qp-box.visible:hover{
+  transform:translateY(-6px) scale(1.004);
+  box-shadow:var(--shadow-hover), inset 0 1px 0 var(--glass-edge);}
+@media (prefers-reduced-motion:reduce){
+  .reveal, .card, .qp-box{opacity:1 !important; transform:none !important; transition:none !important;}
+}
+
+/* ---------- Battery card ---------- */
+.batt-wrap{display:flex; gap:18px; align-items:center;}
+.ring{position:relative; width:128px; height:128px; flex:none;}
+.ring svg{transform:rotate(-90deg);}
+.ring .track-c{stroke:var(--panel-2);}
+.ring .fill-c{stroke:var(--green); stroke-linecap:round; transition:stroke-dashoffset .6s ease, stroke .4s;}
+.ring .center{position:absolute; inset:0; display:grid; place-items:center; text-align:center;}
+.ring .pct{font-family:var(--mono); font-size:26px; font-weight:600;}
+.ring .state{font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; color:var(--muted); text-transform:uppercase;}
+.batt-kv{flex:1; display:grid; gap:10px;}
+.pwr-flag{background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:10px 12px;}
+.pwr-flag .val{font-size:14px;}
+.pwr-flag.fault{border-color:rgba(255,107,122,.6);}
+@media (prefers-reduced-motion:no-preference){
+  .pwr-flag.fault{animation:lowblink 1.4s ease-in-out infinite;}
+}
+
+/* ---------- History + log ---------- */
+.chart-wrap{height:240px; position:relative;}
+.log{
+  font-family:var(--mono); font-size:10.5px; line-height:1.7;
+  background:var(--log-bg); border:1px solid var(--line); border-radius:10px;
+  padding:12px 14px; height:240px; overflow-y:auto;
+  color:var(--muted); white-space:pre-wrap; word-break:break-all;
+}
+.log .t{color:var(--cyan);}
+.log::-webkit-scrollbar{width:8px;} .log::-webkit-scrollbar-thumb{background:var(--line); border-radius:4px;}
+
+footer{
+  max-width:1440px; margin:0 auto; padding:0 22px 26px;
+  font-family:var(--mono); font-size:10.5px; color:var(--faint); letter-spacing:.04em;
+}
+</style>
+</head>
+<body>
+
+<!-- ================= HEADER ================= -->
+<header>
+  <div class="brand">
+    <div class="brand-mark">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="10" r="3.2" style="stroke:var(--cyan)" stroke-width="1.6"/>
+        <path d="M12 2.8c-4 0-7.2 3.2-7.2 7.2 0 5.4 7.2 11.2 7.2 11.2S19.2 15.4 19.2 10c0-4-3.2-7.2-7.2-7.2Z" style="stroke:var(--accent)" stroke-width="1.6" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div>
+      <h1>MultiSense Tracker Console</h1>
+      <div class="sub" id="deviceId">TRK-7070-01</div>
+    </div>
+  </div>
+
+  <div class="badges">
+    <span class="badge err" id="linkBadge"><span class="dot"></span><span id="linkTxt">NO LINK</span></span>
+    <span class="badge" id="fixBadge"><span class="dot"></span><span id="fixTxt">GNSS: —</span></span>
+  </div>
+
+  <div class="header-right">
+    <label class="switch" title="Generates simulated packets until the backend is connected">
+      <input type="checkbox" id="demoToggle" checked>
+      <span class="track"></span>
+      DEMO DATA
+    </label>
+    <span class="batt-pill" id="battPill"
+          title="Battery — time to empty, or time to full while charging. (Demo: click once for low battery, again to plug in the charger.)">
+      <span class="icon"><i id="battIconFill"></i><span class="bolt" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg></span></span>
+      <span class="pct" id="hdrPct">—%</span>
+      <span class="eta" id="hdrEta">—</span>
+    </span>
+    <button class="icon-btn" id="alertBtn" aria-label="Alert center" title="Alert center">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      <span class="alert-badge" id="alertBadge" hidden>0</span>
+    </button>
+    <button class="icon-btn" id="themeBtn" aria-label="Switch between dark and light mode" title="Toggle dark / light mode"></button>
+  </div>
+</header>
+
+<div id="toasts" aria-live="polite"></div>
+
+<div class="alert-panel" id="alertPanel" hidden>
+  <div class="ap-head">Alert center <button id="alertClear">clear all</button></div>
+  <div class="ap-list" id="alertList"></div>
+</div>
+
+<div class="layout">
+
+<aside class="quick-panel" id="quickPanel">
+  <div class="qp-box qp-env" id="envBox">
+    <div class="qp-lbl">Environment</div>
+    <div class="env-read">
+      <div class="env-icon" id="envIcon" aria-hidden="true"></div>
+      <div>
+        <div class="env-name" id="envTxt">—</div>
+        <div class="env-sub" id="envSub">GNSS + light heuristic</div>
+      </div>
+    </div>
+  </div>
+  <div class="qp-box">
+    <div class="qp-lbl">Detected colour · AS7341</div>
+    <div class="colour-read">
+      <div class="swatch" id="colSwatch" role="img" aria-label="Detected colour swatch"></div>
+      <div>
+        <div class="col-name" id="colName">Detecting colour…</div>
+        <div class="col-meta">sRGB <span id="colHex">—</span> · peak <span id="colPeak">—</span> nm<br><span id="colCct">—</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="qp-box">
+    <div class="qp-lbl">Nearest object · VL53L5CX</div>
+    <div class="qp-dist" id="tofConv">—</div>
+    <div class="qp-sub">centre <span id="qpMm">—</span> mm · 63° FoV</div>
+  </div>
+</aside>
+
+<main>
+
+  <!-- ================= DAILY SUMMARY ================= -->
+  <section class="card">
+    <div class="card-head">
+      <h2>Today's Summary</h2>
+      <span class="bus" id="dsDate"></span>
+    </div>
+    <div class="card-body">
+      <div class="kv daily-kv" style="grid-template-columns:repeat(5,minmax(0,1fr));">
+        <div class="cell"><div class="lbl">Distance travelled</div><div class="val cy" id="dsDist">0 m</div></div>
+        <div class="cell"><div class="lbl">Time outdoors</div><div class="val" id="dsOut">0m</div></div>
+        <div class="cell"><div class="lbl">Time indoors</div><div class="val" id="dsIn">0m</div></div>
+        <div class="cell"><div class="lbl">Battery used</div><div class="val" id="dsBatt">0.0%</div></div>
+        <div class="cell"><div class="lbl">Alerts today</div><div class="val warn" id="dsAlerts">0</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ROW 1 · MAP + GNSS/CELL ================= -->
+  <div class="row-top">
+
+    <section class="card map-card">
+      <div class="card-head">
+        <h2>Live Position</h2>
+        <span class="bus">SIM7070G · GNSS</span>
+        <span class="right" id="trailLen">trail: 0 pts</span>
+      </div>
+      <div class="card-body">
+        <div id="map" role="application" aria-label="Device position map"></div>
+        <div class="map-toolbar">
+          <button class="tbtn-ico on" id="centerToggle" aria-pressed="true"
+                  title="Auto-center map on the device — click to toggle on/off">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+            CENTER
+          </button>
+          <label class="switch"><input type="checkbox" id="trailToggle" checked><span class="track"></span>TRAIL</label>
+          <label class="switch" title="Show your position and the route to the device">
+            <input type="checkbox" id="meToggle"><span class="track"></span>MY LOCATION</label>
+          <button class="tbtn-ico" id="gfBtn" title="Geofence — click, then click the map to place a zone; alerts fire on entry/exit">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8" stroke-dasharray="4 3"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg>
+            GEOFENCE
+          </button>
+          <input type="range" id="gfRadius" min="50" max="2000" step="25" value="200" hidden
+                 title="Geofence radius">
+          <span id="gfInfo" style="color:var(--violet);"></span>
+          <span id="routeTxt" style="color:var(--amber);"></span>
+          <span class="coords" id="coordTxt">— , —</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>GNSS &amp; Cellular</h2>
+        <span class="bus">SIM7070G · UART RX/TX</span>
+        <span class="right" id="netMode">—</span>
+      </div>
+      <div class="card-body">
+        <div class="kv">
+          <div class="cell"><div class="lbl">Latitude</div><div class="val cy" id="gLat">—</div></div>
+          <div class="cell"><div class="lbl">Longitude</div><div class="val cy" id="gLon">—</div></div>
+          <div class="cell"><div class="lbl">Altitude</div><div class="val" id="gAlt">— <small>m</small></div></div>
+          <div class="cell"><div class="lbl">Speed</div><div class="val" id="gSpd">— <small>km/h</small></div></div>
+          <div class="cell"><div class="lbl">Satellites</div><div class="val" id="gSats">—</div></div>
+          <div class="cell"><div class="lbl">HDOP</div><div class="val" id="gHdop">—</div></div>
+          <div class="cell" style="grid-column:1/-1;">
+            <div class="lbl">Cellular link</div>
+            <div class="val" style="display:flex; align-items:center;">
+              <span class="sig" id="sigBars"><i></i><i></i><i></i><i></i><i></i></span>
+              <span id="cellTxt">—</span>
+            </div>
+          </div>
+          <div class="cell"><div class="lbl">RSSI</div><div class="val" id="cRssi">— <small>dBm</small></div></div>
+          <div class="cell"><div class="lbl">Band</div><div class="val" id="cBand">—</div></div>
+        </div>
+        <div class="cardfoot">
+          <span>Last packet <b id="lastPkt">—</b></span>
+          <span>Uptime <b id="uptime">—</b></span>
+          <span>Trip <b id="tripOdo">0 m</b></span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= ROW 2 · SENSORS ================= -->
+  <div class="row-sensors">
+
+    <!-- AS7341 -->
+    <section class="card">
+      <div class="card-head">
+        <h2>Spectral Sensor</h2>
+        <span class="bus">AS7341 · I²C 0x39</span>
+        <button class="mini-btn" id="calBtn" style="margin-left:auto;"
+                title="White-point calibration — aim at a white surface under the current light, then click. Click again to clear.">CAL</button>
+        <span class="right" style="margin-left:0;" id="specGain">gain —</span>
+      </div>
+      <div class="card-body">
+        <div class="spectrum" id="spectrum"></div>
+        <div class="spectrum-strip" aria-hidden="true"></div>
+        <div class="kv spec-foot">
+          <div class="cell"><div class="lbl">Clear</div><div class="val" id="sClear">—</div></div>
+          <div class="cell"><div class="lbl">NIR</div><div class="val" id="sNir">—</div></div>
+          <div class="cell"><div class="lbl">Est. Lux</div><div class="val warn" id="sLux">—</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VL53L5CX multizone -->
+    <section class="card">
+      <div class="card-head">
+        <h2>Multizone ToF</h2>
+        <span class="bus">VL53L5CX · I²C 0x29</span>
+        <span class="right" id="tofMode">8×8 · 15 Hz</span>
+      </div>
+      <div class="card-body">
+        <div class="tof-read">
+          <span class="big" id="tofMm">—</span><span class="unit">mm centre</span>
+          <span class="right" style="margin-left:auto;"><span class="badge ok" id="tofStatus" style="padding:4px 10px;"><span class="dot"></span><span id="tofStatusTxt">—</span></span></span>
+        </div>
+        <canvas id="tofHeat" class="tof-heat" role="img" aria-label="8 by 8 depth map"></canvas>
+        <div class="heat-legend"><span>near</span><div class="heat-grad" aria-hidden="true"></div><span>far</span></div>
+        <div class="kv" style="grid-template-columns:repeat(3,minmax(0,1fr)); margin-bottom:10px;">
+          <div class="cell"><div class="lbl">Nearest</div><div class="val warn" id="tofMin">—</div></div>
+          <div class="cell"><div class="lbl">Average</div><div class="val" id="tofAvg">—</div></div>
+          <div class="cell"><div class="lbl">Farthest</div><div class="val" id="tofMax">—</div></div>
+        </div>
+        <div class="kv" style="margin-bottom:12px;">
+          <div class="cell"><div class="lbl">Valid zones</div><div class="val" id="tofZones">—</div></div>
+          <div class="cell"><div class="lbl">Signal rate</div><div class="val" id="tofSig">— <small>MCPS</small></div></div>
+        </div>
+        <canvas class="spark" id="tofSpark" height="64"></canvas>
+      </div>
+    </section>
+
+    <!-- Battery -->
+    <section class="card">
+      <div class="card-head">
+        <h2>Power Monitor</h2>
+        <span class="bus">Fuel gauge · I²C 0x40</span>
+        <span class="right" id="battState">—</span>
+      </div>
+      <div class="card-body">
+        <div class="batt-wrap">
+          <div class="ring" role="img" aria-label="Battery state of charge">
+            <svg width="128" height="128" viewBox="0 0 128 128">
+              <circle class="track-c" cx="64" cy="64" r="54" fill="none" stroke-width="10"/>
+              <circle class="fill-c" id="socRing" cx="64" cy="64" r="54" fill="none" stroke-width="10"
+                stroke-dasharray="339.3" stroke-dashoffset="339.3"/>
+            </svg>
+            <div class="center">
+              <div>
+                <div class="pct" id="socPct">—</div>
+                <div class="state" id="socState">SOC</div>
+              </div>
+            </div>
+          </div>
+          <div class="batt-kv">
+            <div class="cell"><div class="lbl">Bus voltage</div><div class="val" id="bVolt">— <small>V</small></div></div>
+            <div class="cell"><div class="lbl">Current</div><div class="val" id="bCurr">— <small>mA</small></div></div>
+            <div class="cell"><div class="lbl">Power</div><div class="val" id="bPow">— <small>mW</small></div></div>
+            <div class="cell"><div class="lbl">Est. runtime</div><div class="val" id="bRun">—</div></div>
+          </div>
+        </div>
+        <div class="cell pwr-flag" id="pwrFlag" style="margin-top:14px;">
+          <div class="lbl">Protection status</div>
+          <div class="val good" id="pwrFlagTxt">NOMINAL</div>
+        </div>
+        <div class="kv" style="grid-template-columns:repeat(3,minmax(0,1fr)); margin-top:12px;">
+          <div class="cell"><div class="lbl">Charge cycles</div><div class="val" id="bhCycles">0.00</div></div>
+          <div class="cell"><div class="lbl">Capacity</div><div class="val" id="bhCap">2000 <small>mAh est.</small></div></div>
+          <div class="cell"><div class="lbl">Health</div><div class="val good" id="bhHealth">100%</div></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= ROW 3 · HISTORY + LOG ================= -->
+  <div class="row-bottom">
+    <section class="card">
+      <div class="card-head">
+        <h2>Telemetry History</h2>
+        <span class="bus">rolling window · 120 samples</span>
+        <span class="right" style="display:flex; gap:8px;">
+          <button class="mini-btn" id="pbToggle" title="Replay collected history on the whole dashboard">PLAYBACK</button>
+          <button class="mini-btn" id="expCsv" title="Download collected packets as CSV">CSV</button>
+          <button class="mini-btn" id="expJson" title="Download collected packets as JSON">JSON</button>
+        </span>
+      </div>
+      <div class="card-body">
+        <div class="pb-bar" id="pbBar" hidden>
+          <button id="pbPlay" aria-label="Play / pause">▶</button>
+          <input type="range" id="pbSlider" min="0" max="0" value="0" aria-label="History position">
+          <span class="pb-info" id="pbInfo">—</span>
+        </div>
+        <div class="chart-wrap"><canvas id="histChart"></canvas></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Packet Log</h2>
+        <span class="bus" id="logSrc">source: demo-data.js generator</span>
+      </div>
+      <div class="card-body">
+        <div class="log" id="log" aria-live="off">Waiting for telemetry…</div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="card-head">
+        <h2>Device Control</h2>
+        <span class="bus">command queue → device polls on next report</span>
+        <span class="right" id="cmdStatus">idle</span>
+      </div>
+      <div class="card-body">
+        <div class="ctrl-grid">
+          <div class="ctrl-box">
+            <div class="lbl">Report interval</div>
+            <select id="cmdInterval">
+              <option value="2">2 s — max resolution</option>
+              <option value="5" selected>5 s — balanced</option>
+              <option value="15">15 s — battery saver</option>
+              <option value="60">60 s — long life</option>
+            </select>
+            <button class="ctrl-btn" id="cmdSendInterval">Apply interval</button>
+          </div>
+          <div class="ctrl-box">
+            <div class="lbl">Locate device</div>
+            <div style="font-size:12px; color:var(--muted); flex:1;">Sounds the on-board buzzer for a few seconds so you can find the tracker nearby.</div>
+            <button class="ctrl-btn" id="cmdBuzzer">🔊 Find device</button>
+          </div>
+          <div class="ctrl-box">
+            <div class="lbl">GNSS</div>
+            <div style="font-size:12px; color:var(--muted); flex:1;">Forces a cold restart of the GNSS engine if the fix is stuck or degraded.</div>
+            <button class="ctrl-btn" id="cmdGnss">Cold restart GNSS</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+</main>
+
+</div><!-- /.layout -->
+
+<footer>
+  MultiSense Tracker · AS7341 spectral + VL53L5CX multizone ToF + power monitor on I²C — SIM7070G GNSS/LTE-M on UART · console v1.1
+</footer>
+
+<script src="demo-data.js"></script>
+<script>
+/* =====================================================================
+   CONFIG
+   · DEMO DATA switch ON  → packets come from demo-data.js (separate file)
+   · DEMO DATA switch OFF → live mode: WebSocket push from the backend at
+     /ws (auto-derived from the page origin), with REST polling of
+     apiUrl as fallback. History is backfilled from /api/telemetry/history.
+   ===================================================================== */
+const CONFIG = {
+  demo: true,                        // initial state of the DEMO DATA switch
+  apiUrl: '/api/telemetry/latest',   // GET → one telemetry packet (JSON)
+  wsUrl:  'auto',                    // 'auto' = ws(s)://<this host>/ws, or set explicitly
+  pollMs: 2000,                      // REST polling interval
+  historyLen: 120,                   // samples kept in the rolling chart
+  maxTrail: 300                      // GPS trail points kept on the map
+};
+
+/* Telemetry packet schema (what the backend must send):
+{
+  "ts": 1720512000000,              // ms epoch
+  "device_id": "TRK-7070-01",
+  "uptime_s": 5321,
+  "gnss": { "fix": true, "lat": 30.3540, "lon": 76.3637, "alt_m": 251.0,
+            "speed_kmh": 1.2, "sats": 9, "hdop": 1.1 },
+  "cell": { "mode": "LTE-M", "operator": "Airtel", "rssi_dbm": -71,
+            "band": "B3", "registered": true },
+  "tof":  { "res": 8,                              // 4 or 8 (4x4 / 8x8 zones)
+            "grid": [ 64 x distance_mm ],           // row-major zone distances
+            "zstatus": [ 64 x target_status ],      // 5/6/9 = valid (optional)
+            "distance_mm": 843,                     // centre-of-view distance
+            "min_mm": 312, "max_mm": 3810,
+            "signal_mcps": 5.2, "ambient_mcps": 0.41, "mode": "8x8 @ 15 Hz" },
+  "spectral": { "f415": 210, "f445": 320, "f480": 512, "f515": 640,
+                "f555": 780, "f590": 655, "f630": 540, "f680": 410,
+                "clear": 3120, "nir": 460, "gain": "64x", "lux": 512 },
+  "battery": { "voltage_v": 3.98, "current_ma": -142, "soc_pct": 76,
+               "charging": false }
+}
+*/
+
+/* ================= constants ================= */
+const CHANNELS = [
+  {key:'f415', nm:'415', color:'#7b3ff2'},
+  {key:'f445', nm:'445', color:'#3f51f2'},
+  {key:'f480', nm:'480', color:'#2196f3'},
+  {key:'f515', nm:'515', color:'#00d084'},
+  {key:'f555', nm:'555', color:'#8bc34a'},
+  {key:'f590', nm:'590', color:'#ffd93b'},
+  {key:'f630', nm:'630', color:'#ff9800'},
+  {key:'f680', nm:'680', color:'#f2453f'}
+];
+const TOF_MAX = 4000;
+const $ = id => document.getElementById(id);
+const fmt = (n,d=2) => (n==null||isNaN(n)) ? '—' : Number(n).toFixed(d);
+
+/* ================= build spectral bars ================= */
+const specEl = $('spectrum');
+CHANNELS.forEach(c=>{
+  const d = document.createElement('div');
+  d.className = 'chan';
+  d.innerHTML = `<div class="barwrap"><div class="bar" style="color:${c.color};background:${c.color};height:3px" id="bar_${c.key}"></div></div>
+                 <div class="nm">${c.nm}</div><div class="cnt" id="cnt_${c.key}">—</div>`;
+  specEl.appendChild(d);
+});
+
+/* ================= map ================= */
+const map = L.map('map', { zoomControl:true, attributionControl:true })
+             .setView([30.3540, 76.3637], 16);
+
+/* base layers — switch via the control in the top-right of the map */
+const baseLayers = {
+  'Streets': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution:'&copy; OpenStreetMap contributors', maxZoom:19 }),
+  'Terrain': L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    attribution:'&copy; OpenStreetMap, SRTM &middot; style &copy; OpenTopoMap', maxZoom:17 }),
+  'Satellite': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution:'Imagery &copy; Esri &amp; contributors', maxZoom:19 })
+};
+baseLayers['Streets'].addTo(map);
+L.control.layers(baseLayers, null, {position:'topright'}).addTo(map);
+
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+const deviceIcon = L.divIcon({
+  className:'', iconSize:[14,14], iconAnchor:[7,7],
+  html:'<div class="device-dot"><div class="ring"></div><div class="core"></div></div>'
+});
+const marker  = L.marker([30.3540,76.3637], {icon:deviceIcon}).addTo(map);
+const accCirc = L.circle([30.3540,76.3637], {radius:12, color:cssVar('--map-dev'), weight:1,
+                  fillColor:cssVar('--map-dev'), fillOpacity:0.08}).addTo(map);
+const trailCasing = L.polyline([], {color:'#FFFFFF', weight:7, opacity:0.9}).addTo(map);
+const trail   = L.polyline([], {color:cssVar('--map-trail'), weight:3.5, opacity:0.95}).addTo(map);
+
+let centerOn = true;
+function setCenter(v){
+  centerOn = v;
+  const b = $('centerToggle');
+  b.classList.toggle('on', v);
+  b.setAttribute('aria-pressed', v);
+  if (v) map.setView(marker.getLatLng(), Math.max(map.getZoom(), 16));
+}
+$('centerToggle').onclick = () => setCenter(!centerOn);
+$('trailToggle').onchange = e => {
+  if (e.target.checked){ trailCasing.addTo(map); trail.addTo(map); }
+  else { map.removeLayer(trail); map.removeLayer(trailCasing); }
+};
+
+/* ================= toast notifications ================= */
+function toast(title, msg, kind='err', sticky=false){
+  const t = document.createElement('div');
+  t.className = 'toast ' + kind;
+  t.innerHTML = `<div><b>${title}</b><div class="msg">${msg}</div></div>
+                 <button class="x" aria-label="Dismiss">✕</button>`;
+  t.querySelector('.x').onclick = () => t.remove();
+  $('toasts').prepend(t);
+  if (!sticky) setTimeout(() => t.remove(), 15000);
+  try{ addAlert(kind === 'warn' ? 'warn' : 'err', title, msg); }catch(e){}
+}
+
+/* ================= user location & route to device ================= */
+const userIcon = L.divIcon({ className:'', iconSize:[13,13], iconAnchor:[6.5,6.5],
+  html:'<div class="user-dot"><div class="core"></div></div>' });
+let userMarker = null, userAcc = null, watchId = null, userPos = null;
+let routeLine = null, lastRoute = { t:0, from:null, to:null };
+
+function hav(a, b){                                    // great-circle distance, metres
+  const R = 6371000, toR = x => x * Math.PI / 180;
+  const dLa = toR(b.lat - a.lat), dLo = toR(b.lng - a.lng);
+  const h = Math.sin(dLa/2)**2 + Math.cos(toR(a.lat)) * Math.cos(toR(b.lat)) * Math.sin(dLo/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function setRoute(latlngs, dashed, meters, secs){
+  if (routeLine) map.removeLayer(routeLine);
+  routeLine = L.polyline(latlngs, { color:cssVar('--map-user'), weight:3, opacity:.85,
+                                    dashArray: dashed ? '6 8' : null }).addTo(map);
+  const dTxt = meters < 1000 ? Math.round(meters) + ' m' : (meters/1000).toFixed(2) + ' km';
+  $('routeTxt').textContent = `you → device: ${dTxt}` +
+    (secs != null ? ` · ~${Math.max(1, Math.round(secs/60))} min` : (dashed ? ' (direct)' : ''));
+}
+async function updateRoute(force = false){
+  if (!userPos) return;
+  const dev = marker.getLatLng();
+  const moved = !lastRoute.to || hav(dev, lastRoute.to) > 25 || hav(userPos, lastRoute.from) > 25;
+  if (!force && (!moved || Date.now() - lastRoute.t < 15000)) return;
+  lastRoute = { t: Date.now(), from: L.latLng(userPos), to: L.latLng(dev) };
+  try{
+    const u = `https://router.project-osrm.org/route/v1/driving/` +
+              `${userPos.lng},${userPos.lat};${dev.lng},${dev.lat}?overview=full&geometries=geojson`;
+    const r = await fetch(u);
+    const j = await r.json();
+    if (j.code === 'Ok' && j.routes && j.routes.length){
+      const rt = j.routes[0];
+      setRoute(rt.geometry.coordinates.map(c => [c[1], c[0]]), false, rt.distance, rt.duration);
+      return;
+    }
+    throw new Error('no route');
+  }catch(e){
+    setRoute([userPos, dev], true, hav(userPos, dev), null);   // straight-line fallback
+  }
+}
+$('meToggle').onchange = e => {
+  if (e.target.checked){
+    if (!navigator.geolocation){
+      toast('Location unavailable', 'This browser does not expose geolocation.', 'warn');
+      e.target.checked = false; return;
+    }
+    watchId = navigator.geolocation.watchPosition(pos => {
+      userPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
+      if (!userMarker){
+        userMarker = L.marker(userPos, { icon:userIcon, title:'You' }).addTo(map);
+        userAcc = L.circle(userPos, { radius: pos.coords.accuracy || 15, color:cssVar('--map-user'),
+                    weight:1, fillColor:cssVar('--map-user'), fillOpacity:.07 }).addTo(map);
+        setCenter(false);                              // keep both points in view
+        map.fitBounds(L.latLngBounds([userPos, marker.getLatLng()]).pad(0.25));
+      } else {
+        userMarker.setLatLng(userPos);
+        userAcc.setLatLng(userPos).setRadius(pos.coords.accuracy || 15);
+      }
+      updateRoute();
+    }, err => {
+      toast('Location blocked', 'Allow location access in the browser — the page must be served over HTTPS or localhost.', 'warn');
+      e.target.checked = false;
+    }, { enableHighAccuracy:true, maximumAge:5000, timeout:12000 });
+  } else {
+    if (watchId != null) navigator.geolocation.clearWatch(watchId);
+    [userMarker, userAcc, routeLine].forEach(l => l && map.removeLayer(l));
+    userMarker = userAcc = routeLine = null; userPos = null;
+    $('routeTxt').textContent = '';
+  }
+};
+
+/* ================= history chart ================= */
+Chart.defaults.font.family = "'IBM Plex Mono', monospace";
+Chart.defaults.font.size = 10;
+const histChart = new Chart($('histChart'), {
+  type:'line',
+  data:{ labels:[], datasets:[
+    { label:'Distance (mm)', data:[], backgroundColor:'transparent',
+      yAxisID:'y', borderWidth:1.5, pointRadius:0, tension:.3 },
+    { label:'Lux', data:[], backgroundColor:'transparent',
+      yAxisID:'y1', borderWidth:1.5, pointRadius:0, tension:.3 },
+    { label:'Battery (V)', data:[], backgroundColor:'transparent',
+      yAxisID:'y2', borderWidth:1.5, pointRadius:0, tension:.3 }
+  ]},
+  options:{
+    responsive:true, maintainAspectRatio:false, animation:false,
+    interaction:{mode:'index', intersect:false},
+    plugins:{ legend:{labels:{boxWidth:10, boxHeight:2}} },
+    scales:{
+      x:{ grid:{}, ticks:{maxTicksLimit:8} },
+      y:{ position:'left',  grid:{}, title:{display:true, text:'mm'} },
+      y1:{ position:'right', grid:{drawOnChartArea:false}, title:{display:true, text:'lux'} },
+      y2:{ position:'right', grid:{drawOnChartArea:false}, min:3.0, max:4.4, title:{display:true, text:'V'} }
+    }
+  }
+});
+
+/* ================= ToF sparkline (plain canvas) ================= */
+const sparkData = [];
+function drawSpark(){
+  const cv = $('tofSpark'), ctx = cv.getContext('2d');
+  const w = cv.width = cv.clientWidth * devicePixelRatio;
+  const h = cv.height = 64 * devicePixelRatio;
+  ctx.clearRect(0,0,w,h);
+  if (sparkData.length < 2) return;
+  const max = Math.max(...sparkData, 500), min = Math.min(...sparkData, 0);
+  ctx.beginPath();
+  sparkData.forEach((v,i)=>{
+    const x = i/(sparkData.length-1)*w;
+    const y = h - ((v-min)/(max-min||1))*(h*0.85) - h*0.075;
+    i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+  });
+  ctx.strokeStyle = cssVar('--cyan'); ctx.lineWidth = 1.5*devicePixelRatio; ctx.stroke();
+}
+
+/* ================= VL53L5CX depth heatmap ================= */
+let lastGrid = null, lastZst = null, lastRes = 8;
+const zoneOk = (zst,i,d) => d > 0 && (!zst || zst[i]===5 || zst[i]===6 || zst[i]===9);
+function drawHeatmap(grid, zst, res){
+  lastGrid = grid; lastZst = zst; lastRes = res;
+  const cv = $('tofHeat'), ctx = cv.getContext('2d');
+  const w = cv.clientWidth, hh = cv.clientHeight || w;
+  cv.width = w*devicePixelRatio; cv.height = hh*devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  const gap = 3;
+  const cw = (w - gap*(res+1))/res, ch = (hh - gap*(res+1))/res;
+  for (let i = 0; i < res*res; i++){
+    const x = i % res, y = (i / res)|0, d = grid[i];
+    if (zoneOk(zst, i, d)){
+      const t = Math.max(0, Math.min(1, (d - 150)/(4000 - 150)));
+      ctx.fillStyle = `hsl(${Math.round(t*225)},72%,${Math.round(52 - t*6)}%)`;
+    } else {
+      ctx.fillStyle = cssVar('--panel-2');
+    }
+    ctx.beginPath();
+    ctx.roundRect(gap + x*(cw+gap), gap + y*(ch+gap), cw, ch, 3);
+    ctx.fill();
+  }
+}
+
+/* ================= theme manager (dark / light) ================= */
+const SUN_SVG  = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const MOON_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>';
+
+function applyChartTheme(){
+  const tick = cssVar('--muted'), grid = cssVar('--chart-grid');
+  const sc = histChart.options.scales;
+  ['x','y','y1','y2'].forEach(k=>{
+    sc[k].ticks = Object.assign(sc[k].ticks || {}, { color: tick });
+    if (sc[k].grid && sc[k].grid.drawOnChartArea !== false) sc[k].grid.color = grid;
+    if (sc[k].title) sc[k].title.color = tick;
+  });
+  histChart.options.plugins.legend.labels.color = tick;
+  const ds = histChart.data.datasets;
+  ds[0].borderColor = cssVar('--cyan');
+  ds[1].borderColor = cssVar('--amber');
+  ds[2].borderColor = cssVar('--green');
+  histChart.update('none');
+}
+function setTheme(t){
+  document.documentElement.dataset.theme = t;
+  $('themeBtn').innerHTML = t === 'dark' ? SUN_SVG : MOON_SVG;   // icon shows the mode you'd switch to
+  try{ localStorage.setItem('trk-theme', t); }catch(e){}
+  applyChartTheme();
+  drawSpark();
+  if (lastGrid) drawHeatmap(lastGrid, lastZst, lastRes);
+}
+$('themeBtn').onclick = () => setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+let savedTheme = 'dark';
+try{ savedTheme = localStorage.getItem('trk-theme') || 'dark'; }catch(e){}
+setTheme(savedTheme);
+
+/* ================= indoor / outdoor classifier ================= */
+const ENV_ICONS = {
+  out:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  in:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.2V21h13V9.2"/><path d="M9.5 21v-6h5v6"/></svg>',
+  mid:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>'
+};
+function classifyEnv(p){
+  let score = 0;                                   // + → outdoor
+  if (p.gnss.fix) score += 2;
+  if (p.gnss.sats >= 7) score += 2; else if (p.gnss.sats >= 4) score += 1; else score -= 2;
+  if (p.spectral.lux > 2000) score += 2; else if (p.spectral.lux < 300) score -= 2;
+  const nirRatio = p.spectral.nir / Math.max(p.spectral.clear,1);
+  if (nirRatio > 0.20) score += 1;                 // sunlight is NIR-rich vs indoor LED
+  const detail = `${p.gnss.sats} sats · ${Math.round(p.spectral.lux)} lux`;
+  if (score >= 3)  return {label:'OUTDOOR', cls:'out', icon:ENV_ICONS.out, detail};
+  if (score <= -1) return {label:'INDOOR',  cls:'in',  icon:ENV_ICONS.in,  detail};
+  return {label:'TRANSITION', cls:'', icon:ENV_ICONS.mid, detail};
+}
+
+/* ================= colour reconstruction (AS7341 → sRGB + name) ================= */
+function wlToRgb(nm){                                  // visible-band approximation
+  let r=0, g=0, b=0;
+  if      (nm >= 380 && nm < 440){ r = -(nm-440)/60; b = 1; }
+  else if (nm < 490){ g = (nm-440)/50; b = 1; }
+  else if (nm < 510){ g = 1; b = -(nm-510)/20; }
+  else if (nm < 580){ r = (nm-510)/70; g = 1; }
+  else if (nm < 645){ r = 1; g = -(nm-645)/65; }
+  else if (nm <= 780){ r = 1; }
+  return [r, g, b];
+}
+const CH_RGB = CHANNELS.map(c => wlToRgb(+c.nm));
+
+function estimateColour(spec){
+  let r=0, g=0, b=0, tot=0;
+  CHANNELS.forEach((c,i)=>{
+    const v = spec[c.key] || 0;
+    r += CH_RGB[i][0]*v; g += CH_RGB[i][1]*v; b += CH_RGB[i][2]*v; tot += v;
+  });
+  if (tot < 40) return { hex:'#12161f', name:'Too dark to read', peak:'—' };
+  const m = Math.max(r,g,b) || 1;
+  const gam = x => Math.round(255 * Math.pow(x/m, 0.8));   // simple display gamma
+  const R = gam(r), G = gam(g), B = gam(b);
+  const hex = '#' + [R,G,B].map(v => v.toString(16).padStart(2,'0')).join('');
+
+  /* HSL → name */
+  const rr=R/255, gg=G/255, bb=B/255;
+  const mx=Math.max(rr,gg,bb), mn=Math.min(rr,gg,bb), d=mx-mn, l=(mx+mn)/2;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2*l - 1));
+  let h = 0;
+  if (d !== 0){
+    if      (mx === rr) h = 60 * (((gg-bb)/d) % 6);
+    else if (mx === gg) h = 60 * ((bb-rr)/d + 2);
+    else                h = 60 * ((rr-gg)/d + 4);
+    if (h < 0) h += 360;
+  }
+  let name;
+  if (s < 0.14){
+    name = l > 0.8 ? 'White / Neutral' : 'Grey / Neutral';
+  } else {
+    const hues = [[15,'Red'],[42,'Orange'],[66,'Yellow'],[95,'Yellow-Green'],
+                  [150,'Green'],[196,'Cyan'],[255,'Blue'],[290,'Violet'],
+                  [332,'Magenta / Pink'],[361,'Red']];
+    name = hues.find(x => h < x[0])[1];
+    if (s < 0.35)      name = 'Pale ' + name;
+    else if (l < 0.28) name = 'Deep ' + name;
+    else if (s > 0.75 && l > 0.45) name = 'Vivid ' + name;
+  }
+  let pk = CHANNELS[0], pv = -1;
+  CHANNELS.forEach(c => { const v = spec[c.key]||0; if (v > pv){ pv = v; pk = c; } });
+  return { hex, name, peak: pk.nm };
+}
+
+/* ================= CCT + light-source estimation (AS7341) ================= */
+function estimateCct(R,G,B){                 // sRGB → xy → McCamy approximation
+  const X = 0.4124*R + 0.3576*G + 0.1805*B;
+  const Y = 0.2126*R + 0.7152*G + 0.0722*B;
+  const Z = 0.0193*R + 0.1192*G + 0.9505*B;
+  const s = X + Y + Z; if (s <= 0) return null;
+  const x = X/s, y = Y/s;
+  const n = (x - 0.3320) / (0.1858 - y);
+  const cct = 449*n**3 + 3525*n**2 + 6823.3*n + 5520.33;
+  return (cct > 1500 && cct < 12000) ? Math.round(cct/50)*50 : null;
+}
+function guessSource(spec){
+  const nirR = spec.nir / Math.max(spec.clear, 1);
+  if (nirR > 0.20 && spec.lux > 2000) return 'daylight';
+  if (nirR > 0.17)                    return 'incandescent / halogen';
+  if ((spec.f445||0) > 1.25*(spec.f480||1)) return 'white LED';
+  return 'mixed / artificial';
+}
+
+/* ================= render one packet ================= */
+let lastTs = 0;
+let lowBattArmed = false;
+let lastFixLL = null, tripM = 0;                     // session odometer
+let pwrFaultArmed = false;                           // latches power-fault toasts                            // latches the 10 % alert
+function applyTelemetry(p, live = true){
+  lastTs = Date.now();
+  if (live){
+    featurePre(p);                     // calibration, activity, packet buffer
+    if (playback.on) return;           // keep buffering, freeze UI while replaying
+  }
+
+  /* header */
+  $('deviceId').textContent = p.device_id || 'TRK-7070-01';
+  $('lastPkt').textContent = new Date(p.ts).toLocaleTimeString();
+  if (p.uptime_s != null){
+    const h = Math.floor(p.uptime_s/3600), m = Math.floor(p.uptime_s%3600/60), s = p.uptime_s%60|0;
+    $('uptime').textContent = `${h}h ${m}m ${s}s`;
+  }
+  const env = classifyEnv(p);
+  const eb = $('envBox');
+  eb.classList.remove('out', 'in');            // preserve reveal/animation classes
+  if (env.cls) eb.classList.add(env.cls);
+  $('envTxt').textContent  = env.label;
+  $('envIcon').innerHTML   = env.icon;
+  $('envSub').textContent  = env.detail + (p._act ? ' · ' + p._act : '');
+
+  const fb = $('fixBadge');
+  fb.className = 'badge ' + (p.gnss.fix ? 'ok' : 'warn');
+  $('fixTxt').textContent = p.gnss.fix ? `GNSS: 3D FIX (${p.gnss.sats} SV)` : 'GNSS: ACQUIRING';
+
+  /* GNSS + cell */
+  $('gLat').textContent  = fmt(p.gnss.lat, 6);
+  $('gLon').textContent  = fmt(p.gnss.lon, 6);
+  $('gAlt').innerHTML    = fmt(p.gnss.alt_m,1)+' <small>m</small>';
+  $('gSpd').innerHTML    = fmt(p.gnss.speed_kmh,1)+' <small>km/h</small>';
+  $('gSats').textContent = p.gnss.sats ?? '—';
+  $('gHdop').textContent = fmt(p.gnss.hdop,2);
+  $('netMode').textContent = p.cell.mode || '—';
+  $('cellTxt').textContent = `${p.cell.operator||'—'} · ${p.cell.registered?'registered':'searching'}`;
+  $('cRssi').innerHTML   = `${p.cell.rssi_dbm} <small>dBm</small>`;
+  $('cBand').textContent = p.cell.band || '—';
+  const bars = Math.max(0, Math.min(5, Math.round((p.cell.rssi_dbm + 110) / 12)));
+  [...$('sigBars').children].forEach((el,i)=> el.classList.toggle('on', i < bars));
+
+  /* map */
+  if (p.gnss.fix){
+    const ll = [p.gnss.lat, p.gnss.lon];
+    marker.setLatLng(ll);
+    accCirc.setLatLng(ll).setRadius(Math.max(5, p.gnss.hdop*8));
+    if (live){
+      trail.addLatLng(ll);
+      const pts = trail.getLatLngs();
+      if (pts.length > CONFIG.maxTrail){ pts.shift(); trail.setLatLngs(pts); }
+      trailCasing.setLatLngs(pts);
+      $('trailLen').textContent = `trail: ${pts.length} pts`;
+      if (lastFixLL){
+        const step = hav(lastFixLL, L.latLng(ll[0], ll[1]));
+        if (step > 1.5 && step < 250) tripM += step; // ignore jitter + teleports
+      }
+      lastFixLL = L.latLng(ll[0], ll[1]);
+      $('tripOdo').textContent = tripM < 1000 ? Math.round(tripM)+' m' : (tripM/1000).toFixed(2)+' km';
+      if (centerOn) map.panTo(ll, {animate:true});
+      updateRoute();                                 // self-throttled
+    }
+    $('coordTxt').textContent = `${fmt(p.gnss.lat,6)}, ${fmt(p.gnss.lon,6)}`;
+  }
+
+  /* AS7341 */
+  const peak = Math.max(...CHANNELS.map(c=>p.spectral[c.key]||0), 1);
+  CHANNELS.forEach(c=>{
+    const v = p.spectral[c.key] || 0;
+    $('bar_'+c.key).style.height = Math.max(3, v/peak*100) + '%';
+    $('cnt_'+c.key).textContent  = v;
+  });
+  $('sClear').textContent = p.spectral.clear;
+  $('sNir').textContent   = p.spectral.nir;
+  $('sLux').textContent   = Math.round(p.spectral.lux);
+  $('specGain').textContent = 'gain ' + (p.spectral.gain || '—');
+  const col = estimateColour(p.spectral);
+  const sw = $('colSwatch');
+  sw.style.background = col.hex;
+  sw.style.color = col.hex;                          // drives the glow shadow
+  $('colName').textContent = col.name;
+  $('colHex').textContent  = col.hex.toUpperCase();
+  $('colPeak').textContent = col.peak;
+  const rgbInt = col.hex.length===7 ? [1,3,5].map(i=>parseInt(col.hex.substr(i,2),16)/255) : null;
+  const cct = rgbInt ? estimateCct(...rgbInt) : null;
+  $('colCct').textContent = (cct && p.spectral.lux > 20)
+      ? `CCT ≈ ${cct} K · ${guessSource(p.spectral)}`
+      : 'CCT — (insufficient light)';
+
+  /* VL53L1X */
+  const res  = p.tof.res || 8;
+  const grid = (p.tof.grid && p.tof.grid.length) ? p.tof.grid
+             : new Array(res*res).fill(p.tof.distance_mm);   // single-zone fallback
+  const zst  = p.tof.zstatus || null;
+  let dMin = Infinity, dMax = 0, sum = 0, nValid = 0;
+  grid.forEach((dz,i)=>{
+    if (zoneOk(zst, i, dz)){
+      nValid++; sum += dz;
+      if (dz < dMin) dMin = dz;
+      if (dz > dMax) dMax = dz;
+    }
+  });
+  const half = res/2;
+  const cIdx = [(half-1)*res+half-1, (half-1)*res+half, half*res+half-1, half*res+half];
+  let cSum = 0, cN = 0;
+  cIdx.forEach(i=>{ if (zoneOk(zst,i,grid[i])){ cSum += grid[i]; cN++; } });
+  const d = p.tof.distance_mm ?? (cN ? Math.round(cSum/cN) : (nValid ? Math.round(sum/nValid) : 0));
+  if (!nValid) dMin = 0;
+
+  $('tofMm').textContent = d || '—';
+  $('tofMode').textContent = p.tof.mode || `${res}×${res}`;
+  const near = p.tof.min_mm ?? (isFinite(dMin) ? dMin : 0);
+  $('tofConv').innerHTML = near <= 0 ? '—'
+      : near < 1000 ? (near/10).toFixed(1) + ' <small>cm</small>'
+                    : (near/1000).toFixed(2) + ' <small>m</small>';
+  $('qpMm').textContent = d || '—';
+  const cvt = mm => mm <= 0 ? '—' : mm < 1000 ? (mm/10).toFixed(1)+' cm' : (mm/1000).toFixed(2)+' m';
+  $('tofMin').textContent = cvt(near);
+  $('tofAvg').textContent = nValid ? cvt(Math.round(sum/nValid)) : '—';
+  $('tofMax').textContent = cvt(p.tof.max_mm ?? dMax);
+  $('tofZones').textContent = `${nValid} / ${res*res}`;
+  $('tofSig').innerHTML = fmt(p.tof.signal_mcps,2)+' <small>MCPS</small>';
+
+  /* real-world read: is something close, and how trustworthy is the frame? */
+  let st;
+  if (!nValid)                st = ['NO TARGET','err'];
+  else if (near > 0 && near < 300) st = ['OBJECT ' + Math.round(near/10) + ' cm','err'];
+  else if (near > 0 && near < 800) st = ['OBJECT ' + (near/1000).toFixed(1) + ' m','warn'];
+  else if (nValid < res*res*0.4)   st = ['LOW CONFIDENCE','warn'];
+  else                        st = ['PATH CLEAR','ok'];
+  $('tofStatus').className = 'badge ' + st[1];
+  $('tofStatusTxt').textContent = st[0];
+
+  drawHeatmap(grid, zst, res);
+  if (live){ sparkData.push(d); if (sparkData.length > 80) sparkData.shift(); }
+  drawSpark();
+
+  /* battery */
+  const soc = Math.max(0, Math.min(100, p.battery.soc_pct));
+  const C = 339.3;
+  const ring = $('socRing');
+  ring.style.strokeDashoffset = C * (1 - soc/100);
+  ring.style.stroke = soc > 40 ? 'var(--green)' : soc > 15 ? 'var(--amber)' : 'var(--red)';
+  $('socPct').textContent = Math.round(soc) + '%';
+  $('battState').textContent = p.battery.charging ? 'charging' : 'discharging';
+  $('socState').textContent  = p.battery.charging ? 'CHARGING' : 'SOC';
+  $('bVolt').innerHTML = fmt(p.battery.voltage_v,3)+' <small>V</small>';
+  const cur = p.battery.current_ma;
+  $('bCurr').innerHTML = `${cur>0?'+':''}${fmt(cur,0)} <small>mA</small>`;
+  $('bPow').innerHTML  = fmt(Math.abs(p.battery.voltage_v*cur),0)+' <small>mW</small>';
+  $('bRun').textContent = p.battery.charging
+      ? (cur > 1 ? fmt(2000*(100-soc)/100/cur,1)+' h to full' : '—')
+      : (cur < -1 ? fmt(2000*soc/100/Math.abs(cur),1)+' h' : '—');
+
+  /* header battery pill + low-battery alert (threshold 10 %) */
+  const LOW_PCT = 10;
+  $('hdrPct').textContent = Math.round(soc) + '%';
+  const iconFill = $('battIconFill');
+  iconFill.style.width = soc + '%';
+  iconFill.style.background = soc > 40 ? 'var(--green)' : soc > LOW_PCT ? 'var(--amber)' : 'var(--red)';
+  const fmtH = hrs => hrs >= 1 ? `${Math.floor(hrs)}h ${Math.round(hrs % 1 * 60)}m`
+                                : `${Math.max(1, Math.round(hrs * 60))}m`;
+  let etaTxt = '—';
+  if (p.battery.charging && cur > 1){
+    etaTxt = fmtH(2000 * (100 - soc) / 100 / cur) + ' to full';   // 2000 mAh pack
+  } else if (p.battery.charging){
+    etaTxt = 'charging';
+  } else if (cur < -1){
+    etaTxt = fmtH(2000 * soc / 100 / Math.abs(cur)) + ' left';
+  }
+  $('hdrEta').textContent = etaTxt;
+  $('battPill').classList.toggle('charging', !!p.battery.charging);
+  $('battPill').classList.toggle('low', soc <= LOW_PCT && !p.battery.charging);
+
+  /* protection flags: over/under-voltage, overcurrent (1S Li-ion thresholds) */
+  const LIMITS = { ov:4.25, uv:3.00, oc_dis:1500, oc_chg:1200 };  // V, V, mA, mA
+  const vBus = p.battery.voltage_v, faults = [];
+  if (vBus > LIMITS.ov)     faults.push('OVERVOLTAGE');
+  if (vBus < LIMITS.uv)     faults.push('UNDERVOLTAGE');
+  if (cur < -LIMITS.oc_dis) faults.push('OVERCURRENT·DIS');
+  if (cur >  LIMITS.oc_chg) faults.push('OVERCURRENT·CHG');
+  const ft = $('pwrFlagTxt');
+  if (faults.length){
+    ft.textContent = faults.join('  ');
+    ft.className = 'val bad';
+    $('pwrFlag').classList.add('fault');
+    if (live && !pwrFaultArmed){
+      pwrFaultArmed = true;
+      toast('Power fault — ' + faults.join(', '),
+            `Bus ${fmt(vBus,2)} V · ${cur>0?'+':''}${Math.round(cur)} mA exceeds safe limits.`);
+    }
+  } else {
+    ft.textContent = 'NOMINAL';
+    ft.className = 'val good';
+    $('pwrFlag').classList.remove('fault');
+    pwrFaultArmed = false;
+  }
+  if (live && soc <= LOW_PCT && !lowBattArmed){
+    lowBattArmed = true;
+    toast(`Battery low — ${Math.round(soc)}%`,
+          `The device needs charging. Estimated ${etaTxt.replace(' left','')} of runtime remaining.`);
+    try{
+      if ('Notification' in window){
+        if (Notification.permission === 'granted')
+          new Notification((p.device_id||'Tracker') + ' · Battery low', {
+            body:`Device needs charging — ${Math.round(soc)}% (${etaTxt})` });
+        else if (Notification.permission !== 'denied')
+          Notification.requestPermission();
+      }
+    }catch(e){ /* notifications unsupported — toast already shown */ }
+  } else if (soc > LOW_PCT + 5){
+    lowBattArmed = false;                            // re-arm after recharge
+  }
+
+  /* history */
+  const t = new Date(p.ts).toLocaleTimeString([], {minute:'2-digit', second:'2-digit'});
+  const push = (arr,v)=>{ if (!live) return; arr.push(v); if (arr.length > CONFIG.historyLen) arr.shift(); };
+  push(histChart.data.labels, t);
+  push(histChart.data.datasets[0].data, d);
+  push(histChart.data.datasets[1].data, Math.round(p.spectral.lux));
+  push(histChart.data.datasets[2].data, p.battery.voltage_v);
+  histChart.update('none');
+
+  /* log */
+  const log = $('log');
+  const line = `<span class="t">[${t}]</span> ${JSON.stringify({
+      lat:+fmt(p.gnss.lat,5), lon:+fmt(p.gnss.lon,5), sats:p.gnss.sats,
+      mm:d, lux:Math.round(p.spectral.lux), v:+fmt(p.battery.voltage_v,2),
+      rssi:p.cell.rssi_dbm, env:env.label})}\n`;
+  if (live){
+    if (log.dataset.ready !== '1'){ log.textContent=''; log.dataset.ready='1'; }
+    log.insertAdjacentHTML('afterbegin', line);
+    while (log.childNodes.length > 40) log.removeChild(log.lastChild);
+    featurePost(p, env);               // geofence, presence, health, daily summary
+  }
+}
+
+/* ================= link status watchdog ================= */
+setInterval(()=>{
+  const alive = Date.now() - lastTs < CONFIG.pollMs * 3;
+  const lb = $('linkBadge');
+  lb.className = 'badge ' + (alive ? 'ok' : 'err');
+  $('linkTxt').textContent = alive ? (demoOn() ? 'LIVE · DEMO' : 'LIVE') : 'NO LINK';
+}, 1000);
+
+/* =====================================================================
+   DATA SOURCES
+   ===================================================================== */
+const demoOn = () => $('demoToggle').checked;
+let pollTimer = null, ws = null;
+
+function startRest(){
+  stopSources(false);
+  pollTimer = setInterval(async ()=>{
+    if (demoOn()) return;
+    try{
+      const r = await fetch(CONFIG.apiUrl, {cache:'no-store'});
+      if (r.ok) applyTelemetry(await r.json());
+    }catch(e){ /* watchdog shows NO LINK */ }
+  }, CONFIG.pollMs);
+}
+function wsUrlAuto(){
+  if (CONFIG.wsUrl && CONFIG.wsUrl !== 'auto') return CONFIG.wsUrl;
+  if (location.protocol === 'http:' || location.protocol === 'https:')
+    return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  return '';                                        // opened as file:// → REST only
+}
+function startWs(){
+  const url = wsUrlAuto();
+  if (!url) return startRest();
+  try{
+    ws = new WebSocket(url);
+    ws.onmessage = ev => { if (!demoOn()) applyTelemetry(JSON.parse(ev.data)); };
+    ws.onerror   = () => { try{ ws.close(); }catch(e){} };
+    ws.onclose   = () => setTimeout(()=>{ if (!demoOn()) startWs(); }, 3000);
+    startRest();                                    // cheap REST safety net alongside WS
+  }catch(e){ startRest(); }
+}
+async function backfillHistory(){                   // repopulate chart from the server
+  try{
+    const r = await fetch(CONFIG.apiUrl.replace('/latest','/history') +
+                          '?limit=' + CONFIG.historyLen, {cache:'no-store'});
+    if (!r.ok) return;
+    const arr = await r.json();
+    histChart.data.labels.length = 0;
+    histChart.data.datasets.forEach(d => d.data.length = 0);
+    sparkData.length = 0;
+    arr.forEach(p => {
+      histChart.data.labels.push(new Date(p.ts).toLocaleTimeString([], {minute:'2-digit', second:'2-digit'}));
+      histChart.data.datasets[0].data.push(p.tof ? p.tof.distance_mm : null);
+      histChart.data.datasets[1].data.push(p.spectral ? Math.round(p.spectral.lux) : null);
+      histChart.data.datasets[2].data.push(p.battery ? p.battery.voltage_v : null);
+      if (p.tof) sparkData.push(p.tof.distance_mm);
+    });
+    if (sparkData.length > 80) sparkData.splice(0, sparkData.length - 80);
+    histChart.update('none'); drawSpark();
+  }catch(e){ /* no history yet — fine */ }
+}
+function stopSources(closeWs=true){
+  if (pollTimer) clearInterval(pollTimer);
+  if (closeWs && ws) ws.close();
+}
+
+/* =====================================================================
+   DEMO SOURCE — lives in the separate file demo-data.js, which exposes
+   window.TrackerDemo = { packet(), batteryDemoStep() }.
+   ===================================================================== */
+let demoMissingWarned = false;
+setInterval(()=>{
+  if (!demoOn()) return;
+  if (window.TrackerDemo){
+    applyTelemetry(TrackerDemo.packet());
+  } else if (!demoMissingWarned){
+    demoMissingWarned = true;
+    toast('Demo unavailable — demo-data.js missing',
+          'Keep demo-data.js in the SAME folder as index.html, then reload. (Both files ship together in the project zip.)',
+          'warn', true);
+    $('log').textContent = 'demo-data.js not found next to index.html — no demo packets.\nPlace both files in one folder and reload, or switch DEMO DATA off for live mode.';
+  }
+}, CONFIG.pollMs);
+
+/* ================= wiring ================= */
+$('battPill').onclick = () => {            // demo: 1st click → low battery, 2nd → plug in charger
+  if (demoOn() && window.TrackerDemo) TrackerDemo.batteryDemoStep();
+};
+$('demoToggle').onchange = e => {
+  $('logSrc').textContent = 'source: ' +
+      (e.target.checked ? 'demo-data.js generator' : 'live · ' + (wsUrlAuto() || CONFIG.apiUrl));
+  if (!e.target.checked){ backfillHistory(); startWs(); }
+};
+if (!CONFIG.demo){ $('demoToggle').checked = false; startWs(); }
+window.addEventListener('resize', () => { drawSpark(); if (lastGrid) drawHeatmap(lastGrid, lastZst, lastRes); });
+
+
+/* =====================================================================
+   FEATURE PACK v1.2 — alert center, geofence, playback, export,
+   device commands, activity, presence, calibration, battery health,
+   daily summary. All state persists via localStorage where available.
+   ===================================================================== */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem('trk-'+k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem('trk-'+k, JSON.stringify(v)); }catch(e){} }
+};
+
+/* ---------- alert center ---------- */
+const alerts = store.get('alerts', []);
+let alertsUnread = 0;
+function addAlert(sev, title, msg){
+  alerts.unshift({ t: Date.now(), sev, title, msg });
+  if (alerts.length > 100) alerts.pop();
+  alertsUnread++;
+  store.set('alerts', alerts);
+  renderAlerts();
+  try{ $('dsAlerts').textContent = alertsToday(); }catch(e){}
+}
+function alertsToday(){
+  const k = new Date().toDateString();
+  return alerts.filter(a => new Date(a.t).toDateString() === k).length;
+}
+function renderAlerts(){
+  const b = $('alertBadge');
+  b.hidden = alertsUnread === 0;
+  b.textContent = alertsUnread > 9 ? '9+' : alertsUnread;
+  const list = $('alertList');
+  list.innerHTML = alerts.length ? '' : '<div class="ap-empty">No alerts yet — all clear.</div>';
+  alerts.slice(0, 50).forEach(a => {
+    const div = document.createElement('div');
+    div.className = 'ap-item ' + a.sev;
+    div.innerHTML = `<span class="ap-time">${new Date(a.t).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                     <div><b>${a.title}</b><div class="ap-msg">${a.msg || ''}</div></div>`;
+    list.appendChild(div);
+  });
+}
+$('alertBtn').onclick = () => {
+  const p = $('alertPanel');
+  p.hidden = !p.hidden;
+  if (!p.hidden){ alertsUnread = 0; renderAlerts(); }
+};
+$('alertClear').onclick = () => { alerts.length = 0; alertsUnread = 0; store.set('alerts', alerts); renderAlerts(); };
+document.addEventListener('click', e => {
+  const p = $('alertPanel');
+  if (!p.hidden && !p.contains(e.target) && !$('alertBtn').contains(e.target)) p.hidden = true;
+});
+renderAlerts();
+
+/* ---------- activity classification (GNSS speed EMA) ---------- */
+let spdEma = 0;
+function computeActivity(p){
+  const s = p.gnss && p.gnss.fix ? (p.gnss.speed_kmh || 0) : 0;
+  spdEma = spdEma * 0.7 + s * 0.3;
+  p._act = spdEma < 0.8 ? 'STATIONARY' : spdEma < 7 ? 'WALKING' : 'VEHICLE';
+}
+
+/* ---------- white-point calibration (AS7341) ---------- */
+let whiteRef = store.get('whiteref', null);
+let lastSpecRaw = null;
+function applyCal(spec){
+  if (!whiteRef) return;
+  CHANNELS.forEach(c => {
+    if (whiteRef[c.key] > 4) spec[c.key] = Math.round(spec[c.key] / whiteRef[c.key] * 600);
+  });
+}
+$('calBtn').onclick = () => {
+  if (whiteRef){
+    whiteRef = null; store.set('whiteref', null);
+    $('calBtn').classList.remove('on');
+    toast('Calibration cleared', 'Spectral readings are raw sensor counts again.', 'warn');
+    return;
+  }
+  if (!lastSpecRaw || lastSpecRaw.lux < 100){
+    toast('Too dark to calibrate', 'Aim the sensor at a white surface under good light, then press CAL.', 'warn');
+    return;
+  }
+  whiteRef = {};
+  CHANNELS.forEach(c => whiteRef[c.key] = lastSpecRaw[c.key]);
+  store.set('whiteref', whiteRef);
+  $('calBtn').classList.add('on');
+  toast('White point captured', 'Colour readings are now normalised to this illuminant. Press CAL again to clear.', 'warn');
+};
+if (whiteRef) $('calBtn').classList.add('on');
+
+/* ---------- packet buffer + playback ---------- */
+const buf = [];
+const playback = { on:false, idx:0, timer:null };
+function bufferPush(p){
+  buf.push(p);
+  if (buf.length > 1000) buf.shift();
+  if (playback.on) $('pbSlider').max = buf.length - 1;
+}
+function pbRender(i){
+  if (!buf.length) return;
+  playback.idx = Math.max(0, Math.min(i, buf.length - 1));
+  $('pbSlider').value = playback.idx;
+  const p = buf[playback.idx];
+  $('pbInfo').textContent = new Date(p.ts).toLocaleTimeString() + ` · ${playback.idx+1}/${buf.length}`;
+  applyTelemetry(p, false);
+}
+function setPlayback(on){
+  if (on && buf.length < 2){ toast('Not enough history yet', 'Let a few packets arrive first, then start playback.', 'warn'); return; }
+  playback.on = on;
+  $('pbToggle').classList.toggle('on', on);
+  $('pbBar').hidden = !on;
+  if (on){
+    $('pbSlider').max = buf.length - 1;
+    pbRender(buf.length - 1);
+  } else {
+    if (playback.timer){ clearInterval(playback.timer); playback.timer = null; $('pbPlay').textContent = '▶'; }
+    if (buf.length) applyTelemetry(buf[buf.length - 1], false);   // snap UI back to newest
+  }
+}
+$('pbToggle').onclick = () => setPlayback(!playback.on);
+$('pbSlider').oninput = e => pbRender(+e.target.value);
+$('pbPlay').onclick = () => {
+  if (playback.timer){ clearInterval(playback.timer); playback.timer = null; $('pbPlay').textContent = '▶'; return; }
+  $('pbPlay').textContent = '⏸';
+  playback.timer = setInterval(() => {
+    if (playback.idx >= buf.length - 1){ $('pbPlay').click(); return; }
+    pbRender(playback.idx + 1);
+  }, 350);
+};
+
+/* ---------- data export ---------- */
+function download(name, text, mime){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], {type:mime}));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+$('expJson').onclick = () => {
+  if (!buf.length) return toast('Nothing to export', 'No packets collected in this session yet.', 'warn');
+  download(`multisense-${new Date().toISOString().slice(0,19)}.json`, JSON.stringify(buf, null, 1), 'application/json');
+};
+$('expCsv').onclick = () => {
+  if (!buf.length) return toast('Nothing to export', 'No packets collected in this session yet.', 'warn');
+  const rows = [['ts','iso','lat','lon','fix','sats','hdop','speed_kmh','rssi_dbm','centre_mm','min_mm','max_mm','lux','clear','nir','voltage_v','current_ma','soc_pct','charging']];
+  buf.forEach(p => rows.push([
+    p.ts, new Date(p.ts).toISOString(), p.gnss.lat, p.gnss.lon, p.gnss.fix?1:0, p.gnss.sats, p.gnss.hdop,
+    p.gnss.speed_kmh, p.cell.rssi_dbm, p.tof.distance_mm, p.tof.min_mm ?? '', p.tof.max_mm ?? '',
+    Math.round(p.spectral.lux), p.spectral.clear, p.spectral.nir,
+    p.battery.voltage_v, p.battery.current_ma, p.battery.soc_pct, p.battery.charging?1:0
+  ]));
+  download(`multisense-${new Date().toISOString().slice(0,19)}.csv`, rows.map(r => r.join(',')).join('\n'), 'text/csv');
+};
+
+/* ---------- geofence ---------- */
+let gf = store.get('geofence', null);            // {lat, lng, r}
+let gfCircle = null, gfPlacing = false, gfInside = null;
+function gfDraw(){
+  if (gfCircle){ map.removeLayer(gfCircle); gfCircle = null; }
+  if (gf){
+    gfCircle = L.circle([gf.lat, gf.lng], { radius: gf.r, color:'#A78BFA', weight:2,
+                dashArray:'6 6', fillColor:'#A78BFA', fillOpacity:.06 }).addTo(map);
+    $('gfRadius').value = gf.r;
+  }
+  $('gfRadius').hidden = !gf;
+  $('gfBtn').classList.toggle('on', !!gf);
+  $('gfInfo').textContent = gf ? `zone ${Math.round(gf.r)} m` : '';
+}
+$('gfBtn').onclick = () => {
+  if (gf){
+    gf = null; store.set('geofence', null); gfInside = null; gfDraw();
+    toast('Geofence removed', 'Entry/exit alerts are off.', 'warn');
+    return;
+  }
+  gfPlacing = true;
+  $('gfInfo').textContent = 'click the map to place the zone…';
+};
+map.on('click', e => {
+  if (!gfPlacing) return;
+  gfPlacing = false;
+  gf = { lat: e.latlng.lat, lng: e.latlng.lng, r: +$('gfRadius').value || 200 };
+  store.set('geofence', gf); gfInside = null; gfDraw();
+  toast('Geofence armed', `${Math.round(gf.r)} m zone — you'll be alerted when the device crosses it. Drag the slider to resize.`, 'warn');
+});
+$('gfRadius').oninput = e => {
+  if (!gf) return;
+  gf.r = +e.target.value;
+  gfCircle.setRadius(gf.r);
+  store.set('geofence', gf);
+  $('gfInfo').textContent = `zone ${Math.round(gf.r)} m`;
+};
+function gfCheck(p){
+  if (!gf || !p.gnss.fix) return;
+  const inside = hav(L.latLng(p.gnss.lat, p.gnss.lon), L.latLng(gf.lat, gf.lng)) <= gf.r;
+  if (gfInside === null){ gfInside = inside; return; }
+  if (inside !== gfInside){
+    gfInside = inside;
+    toast(inside ? 'Geofence — device entered the zone' : 'Geofence — device LEFT the zone',
+          `at ${fmt(p.gnss.lat,5)}, ${fmt(p.gnss.lon,5)}`, inside ? 'warn' : 'err');
+  }
+}
+gfDraw();
+
+/* ---------- presence detection (VL53L5CX, stationary) ---------- */
+let minHist = [], presCooldown = 0;
+function presenceCheck(p){
+  const m = p.tof.min_mm || 0;
+  if (m > 0){ minHist.push(m); if (minHist.length > 24) minHist.shift(); }
+  if (p._act !== 'STATIONARY' || minHist.length < 12 || m <= 0) return;
+  const sorted = [...minHist].sort((a,b) => a-b);
+  const baseline = sorted[(sorted.length/2)|0];
+  if (m < baseline * 0.55 && m < 1500 && Date.now() > presCooldown){
+    presCooldown = Date.now() + 30000;
+    toast('Presence detected', `Something approached to ${(m/10).toFixed(0)} cm while the device was stationary.`, 'warn');
+  }
+}
+
+/* ---------- battery health (coulomb counting + capacity estimate) ---------- */
+const bh = store.get('batthealth', { dis_mAh:0, chg_mAh:0, capEst:2000, lastT:0, segSoc:null, segmAh:0 });
+function healthUpdate(p){
+  const now = p.ts, cur = p.battery.current_ma;
+  if (bh.lastT && now > bh.lastT && now - bh.lastT < 60000){
+    const hrs = (now - bh.lastT) / 3600000;
+    if (cur < 0) bh.dis_mAh += -cur * hrs; else bh.chg_mAh += cur * hrs;
+  }
+  if (p.battery.charging){
+    if (bh.segSoc == null){ bh.segSoc = p.battery.soc_pct; bh.segmAh = bh.chg_mAh; }
+  } else if (bh.segSoc != null){
+    const dSoc = p.battery.soc_pct - bh.segSoc, dmAh = bh.chg_mAh - bh.segmAh;
+    if (dSoc > 25 && dmAh > 50){                       // meaningful charge segment
+      bh.capEst = bh.capEst * 0.7 + (dmAh / dSoc * 100 / 0.95) * 0.3;
+    }
+    bh.segSoc = null;
+  }
+  bh.lastT = now;
+  store.set('batthealth', bh);
+  $('bhCycles').textContent = (bh.dis_mAh / Math.max(bh.capEst, 1)).toFixed(2);
+  $('bhCap').innerHTML = Math.round(bh.capEst) + ' <small>mAh est.</small>';
+  const hp = Math.min(100, bh.capEst / 2000 * 100);
+  const el = $('bhHealth');
+  el.textContent = Math.round(hp) + '%';
+  el.className = 'val ' + (hp > 80 ? 'good' : hp > 60 ? 'warn' : 'bad');
+}
+
+/* ---------- daily summary ---------- */
+const dayKey = new Date().toISOString().slice(0,10);
+const ds = store.get('day-' + dayKey, { dist:0, outS:0, inS:0, batt:0, lastT:0, lastSoc:null });
+let dsLastLL = null;
+$('dsDate').textContent = new Date().toLocaleDateString(undefined, { weekday:'short', day:'numeric', month:'short' });
+function dailyUpdate(p, env){
+  const now = p.ts;
+  if (ds.lastT && now > ds.lastT && now - ds.lastT < 60000){
+    const secs = (now - ds.lastT) / 1000;
+    if (env.label === 'OUTDOOR') ds.outS += secs;
+    else if (env.label === 'INDOOR') ds.inS += secs;
+  }
+  ds.lastT = now;
+  if (p.gnss.fix){
+    const ll = L.latLng(p.gnss.lat, p.gnss.lon);
+    if (dsLastLL){ const st = hav(dsLastLL, ll); if (st > 1.5 && st < 250) ds.dist += st; }
+    dsLastLL = ll;
+  }
+  if (ds.lastSoc != null && !p.battery.charging && p.battery.soc_pct < ds.lastSoc)
+    ds.batt += ds.lastSoc - p.battery.soc_pct;
+  ds.lastSoc = p.battery.soc_pct;
+  store.set('day-' + dayKey, ds);
+  $('dsDist').textContent = ds.dist < 1000 ? Math.round(ds.dist) + ' m' : (ds.dist/1000).toFixed(2) + ' km';
+  const ft = s => { const hh = s/3600|0, mm = s%3600/60|0; return hh ? `${hh}h ${mm}m` : `${mm}m`; };
+  $('dsOut').textContent = ft(ds.outS);
+  $('dsIn').textContent  = ft(ds.inS);
+  $('dsBatt').textContent = ds.batt.toFixed(1) + '%';
+  $('dsAlerts').textContent = alertsToday();
+}
+
+/* ---------- device commands ---------- */
+async function sendCmd(cmd, value){
+  const dev = $('deviceId').textContent || 'TRK-7070-01';
+  $('cmdStatus').textContent = 'sending…';
+  if (demoOn()){
+    setTimeout(() => {
+      $('cmdStatus').textContent = 'queued (demo)';
+      toast('Command queued (demo)', `${cmd}${value != null ? ' = ' + value : ''} — a real device would pick this up on its next report.`, 'warn');
+    }, 400);
+    return;
+  }
+  try{
+    const r = await fetch('/api/command', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ device_id: dev, cmd, value }) });
+    if (!r.ok) throw 0;
+    $('cmdStatus').textContent = 'queued';
+    toast('Command queued', `${cmd}${value != null ? ' = ' + value : ''} — the device applies it on its next report cycle.`, 'warn');
+  }catch(e){
+    $('cmdStatus').textContent = 'failed';
+    toast('Command failed', 'The backend is unreachable.');
+  }
+}
+$('cmdSendInterval').onclick = () => sendCmd('set_interval', +$('cmdInterval').value);
+$('cmdBuzzer').onclick = () => sendCmd('buzzer', 3);
+$('cmdGnss').onclick   = () => sendCmd('gnss_restart');
+
+/* ---------- hooks called from applyTelemetry ---------- */
+function featurePre(p){
+  computeActivity(p);
+  lastSpecRaw = { ...p.spectral };
+  applyCal(p.spectral);
+  bufferPush(p);
+}
+function featurePost(p, env){
+  gfCheck(p);
+  presenceCheck(p);
+  healthUpdate(p);
+  dailyUpdate(p, env);
+}
+
+/* ================= scroll-reveal animations ================= */
+(function(){
+  const els = [];
+  document.querySelectorAll('main .card').forEach((el,i)=>{
+    el.classList.add('reveal', i % 2 ? 'from-right' : 'from-left');
+    el.style.transitionDelay = (i % 3) * 90 + 'ms';
+    els.push(el);
+  });
+  document.querySelectorAll('.quick-panel .qp-box').forEach((el,i)=>{
+    el.classList.add('reveal','pop');
+    el.style.transitionDelay = i * 110 + 'ms';
+    els.push(el);
+  });
+  if (!('IntersectionObserver' in window)){
+    els.forEach(e => e.classList.add('visible')); return;
+  }
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(en =>
+      en.target.classList.toggle('visible', en.isIntersecting));   // replay both directions
+  }, {threshold:.15, rootMargin:'0px 0px -7% 0px'});
+  els.forEach(e => io.observe(e));
+})();
+</script>
+</body>
+</html>
