@@ -1,0 +1,10 @@
+{
+  "name": "multisense-tracker",
+  "private": true,
+  "scripts": {
+    "test": "node test/harness.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}
