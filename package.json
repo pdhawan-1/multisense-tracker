@@ -2,7 +2,9 @@
   "name": "multisense-tracker",
   "private": true,
   "scripts": {
-    "test": "node test/harness.mjs"
+    "test": "node test/harness.mjs",
+    "test:v3": "node test/v3-extras.mjs",
+    "test:all": "node test/harness.mjs && node test/v3-extras.mjs"
   },
   "devDependencies": {
     "jsdom": "^29.1.1"
