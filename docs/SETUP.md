@@ -1,4 +1,4 @@
-# MultiSense Tracker — MQTT build, setup & bring-up
+# MultiSense Tracker — MQTT build, setup & bring-up (v3)
 
 ESP32-S3-WROOM-1 **N16R8** · SIMCom **A7672S** 4G · **AS7341** · **VL53L5CX** ·
 **INA226** (R010, 2S Li-ion) · **WS2812B** · buzzer → **HiveMQ Cloud** →
@@ -48,40 +48,67 @@ twice.
 
 ---
 
-## 2. Wiring
+## 2. Wiring (as built)
 
 Pins avoid GPIO 26–37 (octal flash/PSRAM on the N16R8 — **35/36/37 will
-brick your boot if you use them**) and 19/20 (native USB).
+break boot**), GPIO 19/20 (native USB) and the strapping pins 0/3/45/46.
 
-| Signal | ESP32-S3 GPIO | Goes to | Note |
+| Signal | GPIO | Goes to | Note |
 |---|---|---|---|
-| I2C SDA | 8 | AS7341 + VL53L5CX + INA226 | one 4.7 kΩ pull-up to 3V3 per line, not three |
-| I2C SCL | 9 | ″ | 400 kHz |
-| UART TX | 17 | A7672S **RX** | crossed |
-| UART RX | 18 | A7672S **TX** | crossed |
-| PWRKEY | 16 | A7672S PWRKEY | low >1 s powers on |
-| WS2812B DIN | 21 | LED module DIN | 330 Ω series resistor on the data line |
-| Buzzer | 4 | buzzer module | |
-| VL53L5CX LPn | 5 | LPn | set `-1` in config.h if tied to 3V3 |
+| I2C SDA | **8** | AS7341 + VL53L5CX + INA226 | one 4.7 kΩ pull-up per line, not three |
+| I2C SCL | **9** | ″ | 400 kHz |
+| VL53L5CX INT | **4** | INT | data-ready, active low |
+| VL53L5CX RST | **5** | RST | hardware recovery — see the polarity note below |
+| AS7341 INT | **6** | INT | light-threshold crossing |
+| INA226 ALE | **15** | ALERT | bus under-voltage (~6.2 V on 2S) |
+| Buzzer | **2** | buzzer +ve | |
+| WS2812B | **1** | DIN | 330 Ω series resistor on the data line |
+| UART TX | **43** | A7672S **RX** | crossed |
+| UART RX | **44** | A7672S **TX** | crossed |
+| PWRKEY | — | not wired | the module self-starts on power |
 
 I2C addresses don't collide: AS7341 `0x39`, VL53L5CX `0x29`, INA226 `0x40`.
 
-**Two power warnings, both of which will bite you:**
+### GPIO 43/44 — the one setting you must not miss
 
-1. The A7672S pulls **~2 A peaks** during LTE transmit. It must run from the
-   battery/supply through its own bulk cap (**≥1000 µF low-ESR at the module's
-   VBAT**), *never* from the ESP32 board's 3V3 regulator. The classic symptom
-   of getting this wrong is a modem that answers `AT` fine and then resets the
-   instant it tries to register.
-2. **INA226 shunt placement.** The module measures across its shunt between
-   `IN+` and `IN−`; put it **high-side in the pack's positive lead**, with the
-   module's `VBUS` on the load side. Bus voltage input tolerates 36 V, so 2S
-   (8.4 V) is comfortable.
+Those are **U0TXD/U0RXD**, the ROM's default debug UART. They are free for
+the modem only because `Serial` goes over native USB:
 
-The WS2812B wants 5 V but accepts 3.3 V logic at 5 V supply in most cases; if
-the colours glitch, drive DIN through a level shifter or run the LED from 3V3.
+> **Tools → USB CDC On Boot = Enabled**
 
----
+Get this wrong and two things happen: you see no serial output, and the ROM
+bootloader's startup banner is transmitted straight into the modem's RX on
+every reset. The modem ignores it, but you will be debugging a phantom.
+
+If your board instead has a USB-UART bridge chip wired to 43/44, the bridge
+and the modem fight over those pins — move the modem to GPIO 17/18 in
+`config.h` and nothing else changes.
+
+### GPIO 7 is deliberately unused
+
+The INA226's **VBS** pin is the chip's own bus-voltage sense input; it
+belongs on the 2S pack node, and the voltage reaches us over I2C. If a wire
+still runs from VBS to GPIO 7, **remove it** — that pin is 3.3 V maximum and
+8.4 V will damage it.
+
+### VL53L5CX RST polarity
+
+The sensor's own pin is `I2C_RST`: a HIGH pulse resets its I2C interface and
+it idles LOW, which is what `TOF_RST_ACTIVE_HIGH 1` does. Some breakouts
+instead bring out an active-LOW *enable*, where idling LOW holds the sensor
+off and it never answers. If the ToF reports "not found" with correct
+wiring, set `TOF_RST_ACTIVE_HIGH 0` and try again.
+
+### Two power warnings, both of which will bite you
+
+1. The A7672S pulls **~2 A peaks** on LTE transmit. It must run from the
+   battery through its own bulk cap (**≥1000 µF low-ESR at the module's
+   VBAT**), never from the ESP32 board's 3V3 regulator. The classic symptom
+   is a modem that answers `AT` fine and then resets the instant it
+   registers.
+2. **INA226 shunt placement:** high-side in the pack's positive lead,
+   between `IN+` and `IN−`, with `VBS` on the load side. Bus voltage input
+   tolerates 36 V, so 2S (8.4 V) is comfortable.
 
 ## 3. Broker: HiveMQ Cloud (free)
 
@@ -283,6 +310,7 @@ condition is shown, top of the table wins.
 | Condition | LED | Buzzer |
 |---|---|---|
 | Fatal error (sensor/modem init failed) | **red, non-stop 150 ms** | 2 low beeps every 1.5 s |
+| **Accident suspected** | **hot red strobe, 90 ms** | **4 beeps @ 3.5 kHz, urgent** |
 | **Outside the geofence** | magenta, 200 ms | **3 beeps @ 2.7 kHz every 2 s** |
 | **Find device** (dashboard button) | white strobe, 60 ms | **warble @ 4 kHz, near-continuous** |
 | Battery critical (<10 %) | red, 250 ms | chirp every 60 s |
@@ -337,14 +365,17 @@ AT+CGNSSINFO            → a fix, or empty commas near a window
 Get a GNSS fix outdoors or at a window **before** blaming the firmware — the
 first cold fix can take several minutes.
 
-**Step 3 — the sensors.** Flash the real firmware. The serial log prints a
-self-check and then names any sensor that didn't answer:
+**Step 3 — the sensors.** Flash the real firmware. The serial log prints two
+self-checks and then names any sensor that didn't answer:
 ```
-self-check: PASS   (soc@3.85V=50%, patiala->chd=57.3 km)
+battery self-check: PASS  (soc@3.85V/cell=50%, median rejects spike=7.40, 1A/30min=2000 mAh left)
+tracker self-check: PASS  (patiala->chd=58.0 km, red-light=0.23g ignored, hard-stop=1.13g fires, threshold=0.60g)
+watchdog armed at 90 s
 ```
-That line is the two bits of maths that fail *silently* if edited — the SoC
-curve and the haversine. If it says FAIL, fix that before trusting any
-reading. Then watch for `MQTT connected` and `published 1300 bytes`.
+Those cover the maths that fails *silently* when edited: the SoC curve, the
+despike filter, the coulomb integrator, the haversine, and the crash
+discriminator. If either says FAIL, fix it before trusting any reading.
+Then watch for `MQTT connected` and `published ~1600 bytes`.
 
 **Step 4 — the full loop.** Dashboard live, draw a fence around your desk,
 then walk out of it. Buzzer + magenta LED, and an alert on the dashboard.
@@ -358,16 +389,21 @@ Nothing on a bench reads correctly by default. These are the three that
 matter, in order of how wrong they are out of the box:
 
 **INA226 current.** If your module has a different shunt than R010, change
-`SHUNT_OHMS`; wrong here and *everything* downstream — current, SoC, battery
-health, charge estimates — is wrong by the same ratio. Check it against a
-bench supply's own ammeter at ~500 mA. If the sign is inverted (discharge
-shown as charging), set `CURRENT_SIGN` to `-1` rather than rewiring.
+`SHUNT_OHMS`; wrong here and *everything* downstream — current, SoC, the
+coulomb counter, runtime estimates — is wrong by the same ratio. Check it
+against a bench supply's own ammeter at ~500 mA. If the sign is inverted
+(discharge shown as charging), set `CURRENT_SIGN` to `-1` rather than
+rewiring.
+
+**Pack capacity** (`BATT_CAPACITY_MAH`, 2500 for your 2S1P LiPo). This is
+what the coulomb counter integrates against, so a pack that is really
+2000 mAh will read 25 % optimistic all the way down. Measure it once: charge
+full, run until the device cuts out, and read the mAh the gauge reported.
 
 **Pack internal resistance** (`BATT_IR_OHMS`, default 0.120 Ω for 2S). A 1 A
-load sags a 2S pack ~120 mV, which the voltage curve would otherwise read as
-~15 % of charge that isn't missing. To measure it: note the resting voltage,
-apply a known load, note the voltage again, then `R = ΔV / I`. Only a voltage
-curve with IR compensation — no coulomb counting, see §13.
+load sags a 2S pack ~120 mV, which the voltage curve alone would read as
+~15 % of charge that isn't missing. Measure it: note the resting voltage,
+apply a known load, note it again, `R = ΔV / I`.
 
 **AS7341 lux.** `lux = clear * 0.164` is a single scale factor matched to the
 `ATIME`/`ASTEP`/gain in `initSensors()`, not a real lux model. Compare against
@@ -375,6 +411,76 @@ any phone light meter and scale that constant. Change the gain and this
 constant must change with it.
 
 ---
+
+## 10b. How the fuel gauge actually works
+
+Four stages, in `battery.cpp`:
+
+1. **median-of-5** on voltage and current — kills single-sample spikes
+2. **EMA** (`FILT_EMA_ALPHA 0.20`) — smooths what survives
+3. **coulomb counting** against `BATT_CAPACITY_MAH`
+4. **OCV fusion** — nudges the integral back toward the voltage curve, but
+   **only while the pack is resting** (`|I| < 60 mA` for 20 s)
+
+Why both: coulomb counting drifts, because every mA of offset error
+accumulates forever. The voltage curve is noisy under load — the modem's
+2 A bursts sag a 2S pack ~240 mV, which a voltage-only gauge reports as a
+flat battery. Each method fixes the other's failure mode, which is why both
+are in there.
+
+The packet carries the evidence, not just the answer: `soc_pct` (fused),
+`soc_ocv` (what the curve alone says), `mah`, `resting` and `soc_src`. If
+those two percentages drift apart over days, your `SHUNT_OHMS` or
+`BATT_CAPACITY_MAH` is off — that comparison is the diagnostic.
+
+On boot the stored coulomb state is compared against the OCV reading; if
+they disagree by more than 20 % the pack was charged or swapped while the
+device was off, so OCV wins and the stored value is discarded.
+
+## 10c. What v3 added, and what each thing costs you
+
+| Feature | What it does | Honest caveat |
+|---|---|---|
+| **Adaptive reporting** | 10 s moving · 60 s idle · 5 min parked · instant on any event | `set_interval` from the dashboard overrides it until reboot |
+| **Emergency mode** | ≤10 % SoC: position-only packets every 15 min, ToF and spectral off, LED dimmed to ⅓ | Exits at 15 % (hysteresis), so it won't flap |
+| **Last gasp** | ≤3 % or ≤6.20 V: one final position + event + SMS, then stops publishing | Fires once per power cycle |
+| **Trips + odometer** | Auto start/stop, distance, duration, max speed; lifetime km in NVS | Distance gates out steps <5 m, so a slow crawl under-counts slightly |
+| **4-zone geofence** | Up to 4 named zones, retained on the broker, cached in NVS | The alarm means **outside every armed zone** — inside any one counts as allowed |
+| **Accident detection** | Harsh decel → sustained standstill → alert with coordinates and the numbers behind it | **See the warning below** |
+| **Network time** | `AT+CCLK` gives real timestamps, so buffered packets carry true times | Needs the network to supply time; falls back to arrival-stamping |
+| **Watchdog** | 90 s TWDT; a wedged modem reboots the device | Reset cause published on boot as `diag.reset_reason` |
+| **Cell-tower fallback** | Position from the serving cell after 3 min with no GNSS | Hundreds of metres to kilometres. Flagged `gnss.src: "lbs"` with `acc_m`, and the dashboard labels it CELL TOWER — never treat it as a trail point |
+| **SMS fallback** | Texts a position after 15 min offline; accepts FIND / WHERE / STATUS / MUTE / REBOOT | Only from `SMS_OWNER` unless you set `SMS_ALLOW_ANY_SENDER`. Needs SMS on your plan |
+| **Modem temperature** | `AT+CPMUTEMP`, free extra telemetry | **Die** temperature — reads 10–20 °C above ambient. Use it for over-temp warnings, not weather |
+| **INT pins + I2C recovery** | ToF data-ready, AS7341 threshold, INA226 under-voltage; a wedged bus is clocked free and sensors re-inited | Recovery count published as `diag.i2c_recoveries` — if it climbs, fix your pull-ups |
+
+### Accident detection — read this before you trust it
+
+The discriminator is **deceleration in g**, not a km/h drop, because a
+red-light stop and a crash look identical by drop alone. Measured by the
+build's own self-check:
+
+```
+  gentle coast 40->0 over 8 s    0.14 g      ignored
+  red light    40->0 over 5 s    0.23 g      ignored
+  brisk stop   50->0 over 4 s    0.35 g      ignored
+  hard brake   60->0 over 3 s    0.57 g      ignored
+  IMPACT       40->0 over 1 s    1.13 g   -> ALERT
+  IMPACT       80->5 over 1 s    2.12 g   -> ALERT
+```
+
+Threshold is `CRASH_DECEL_G 0.60`. Anything looser fires at every traffic
+light. An alert also requires a prior speed ≥25 km/h and a standstill held
+for 15 s, and it self-cancels with an `accident_cleared` event if the
+vehicle drives off within 60 s.
+
+**The honest limit:** this is 1 Hz GNSS speed, not an accelerometer. It
+cannot see a low-speed knock, a rollover, or an impact while already
+stopped, and it will occasionally fire on a hard stop in traffic. If
+accident detection actually matters to you, add an **MPU6050 or LSM6DSO on
+the same I2C bus** — then the accelerometer becomes the trigger and this
+logic becomes the corroboration. That is a genuinely small addition; ask and
+I'll wire it in.
 
 ## 11. Data budget
 
@@ -431,15 +537,21 @@ reasoning about them.
 
 ## 13. What I deliberately left out
 
-- **Coulomb counting.** Voltage curve + IR compensation only. 2S Li-ion has
-  enough slope for ~±5 % once §10 is calibrated. Add integration of
-  `current_ma × dt` if you need better than that — the INA226 already gives
-  you the current.
+- **Light sleep.** Not selected. Always-on draws ~120–200 mA, dominated by
+  the modem, so a 2500 mAh pack gives roughly 15–17 h. Adaptive reporting
+  already cuts the radio duty cycle hard; light sleep between sensor reads
+  would save perhaps another 30–40 mA.
+- **An accelerometer.** The single biggest upgrade available to this board —
+  see the accident-detection warning above.
+- **Tamper detection, silent mode, speed/stationary alerts, OTA, in-pocket
+  and cargo detection.** Not selected. The AS7341 INT hook that tamper
+  detection would use is already wired and publishing `light_change`
+  events, so that one is a short step if you want it.
 - **Flash-backed offline buffer.** The 60-packet replay buffer lives in
   PSRAM, so a reboot loses it. You chose RAM; switch to LittleFS if you need
   to survive power loss.
-- **Deep sleep.** Always-on, as you chose: ~120–200 mA average, dominated by
-  the modem. Needed for sub-second find-device.
+- **Per-sensor retry on a schedule.** Sensors are re-inited on I2C recovery,
+  but a sensor that is simply absent at boot stays absent until reboot.
 - **Multi-device support.** Topics and the backend are already wildcard-based
   (`multisense/+/telemetry`), so a second tracker just needs its own
   `DEVICE_ID` and credential. The dashboard shows one device at a time.
@@ -451,17 +563,25 @@ reasoning about them.
 
 ```
 firmware/multisense_s3_a7672s/
-  multisense_s3_a7672s.ino   main loop, packet build, fence, boot self-check
+  multisense_s3_a7672s.ino   orchestration, packet build, SMS, modes
   config.h                   EVERY tunable — the only file you must edit
-  a7672s.h/.cpp              modem: LTE attach, TLS, MQTT AT stack, GNSS
+  a7672s.h/.cpp              modem: LTE, TLS, MQTT AT stack, GNSS, time,
+                             temperature, cell-tower position, SMS
+  battery.h/.cpp             filtered coulomb-counting fuel gauge
+  sensors.h/.cpp             AS7341 + VL53L5CX, INT pins, I2C recovery
+  tracker.h/.cpp             trips, odometer, 4-zone fence, accident, rate
   indicators.h/.cpp          WS2812B + buzzer state machines, non-blocking
 backend/
   server.py                  your server + the MQTT bridge wired in
   mqtt_bridge.py             paho-mqtt subscriber and downlink publisher
   test_bridge.py             run it: python3 test_bridge.py
 frontend/
-  index.html                 your dashboard, 6 small edits (§7)
-  mqtt-live.js               live-over-WSS, command + fence publishing
+  index.html                 your dashboard + the v3 extras strip and
+                             multi-zone geofence UI
+  mqtt-live.js               live-over-WSS, command + multi-zone fence
+test/
+  harness.mjs                your original dashboard smoke test (unchanged)
+  v3-extras.mjs              25 checks on the v3 fields and zone publishing
 tools/
   upload_ca.py               one-time CA upload (run this before first flash)
   fake_device.py             test the whole chain with no hardware
